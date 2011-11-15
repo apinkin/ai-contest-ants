@@ -1,0 +1,8 @@
+*.DS_Store
+*.jar
+*game_log*
+*.log
+*.pyc
+*.javac
+build/*
+out/*
