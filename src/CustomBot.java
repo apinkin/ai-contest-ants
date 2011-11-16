@@ -301,6 +301,8 @@ public class CustomBot extends AbstractHiveMind {
     }
 
     private boolean isMyHill(IField field, Cell cell) {
-        Owned p = field.get(cell);    }
+        Owned p = field.get(cell);
+        return p.type == Cell.Type.HILL && p.isMine();
+    }
 
 }
