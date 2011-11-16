@@ -18,12 +18,115 @@ public class CustomBot extends AbstractHiveMind {
 
         collectFood(field, myAnts, orderedAnts);
 
-        attack(field, myAnts, orderedAnts);
+        diffuse(field, orderedAnts);
 
-        explore(field, myAnts, orderedAnts);
+        //attack(field, myAnts, orderedAnts);
+
+        //explore(field, myAnts, orderedAnts);
 
         //randomMoves(field, myAnts, orderedAnts);
 
+    }
+
+    private void diffuse(IField field, Set<Cell> orderedAnts) {
+        double[][] diffExp = new double[info.rows][info.cols];
+        boolean[][] diffusedExp = new boolean[info.rows][info.cols];
+
+        // seed the influence map
+        for(int row = 0; row < info.rows; row ++) {
+            for(int col = 0; col < info.cols; col ++) {
+                Owned o = field.get(row, col);
+                if (!o.explored) {
+                    diffExp[row][col] = Integer.MAX_VALUE;
+                    diffusedExp[row][col] = true;
+                }
+                if (o.type.equals(Cell.Type.WATER) || o.type.equals(Cell.Type.HILL)) {
+                    diffExp[row][col] = 0;
+                    diffusedExp[row][col] = true;
+                }
+            }
+        }
+
+        // iterate to diffuse the influence
+        int iterations = 100;
+        for (int i=0; i<iterations; i++) {
+            for(int row = 0; row < info.rows; row ++) {
+                for(int col = 0; col < info.cols; col ++) {
+                    if (diffusedExp[row][col])
+                        continue;
+                    double up = diffExp[get_dest(row, -1, info.rows)][col];
+                    double down = diffExp[get_dest(row, 1, info.rows)][col];
+                    double left = diffExp[row][get_dest(col, -1, info.cols)];
+                    double right = diffExp[row][get_dest(col, 1, info.cols)];
+
+                    double divider = 4.0;
+                    diffExp[row][col] = up/divider + down/divider + left/divider + right/divider;
+//                    diffusedExp[row][col] = true;
+                }
+            }
+        }
+        //print(diffExp);
+
+        // now make decisions where free ants can go
+        for (Cell antLoc : field.getMyAntPositions()) {
+            if (!orderedAnts.contains(antLoc)) {
+                Direction direction = getDirectionHighestDiff(field, antLoc, diffExp);
+                if (direction != null) {
+                    issueOrder(antLoc, direction);
+                    orderedAnts.add(antLoc);
+                    System.err.println("Sent ant to explore (diffusion): " + antLoc + "  to " + direction);
+                }
+                else {
+                    System.err.println("Ant stuck due to 0 diffusion: " + antLoc);
+                }
+            }
+        }
+    }
+
+    private Direction getDirectionHighestDiff(IField field, Cell cell, double[][] diffExp) {
+        Cell north = field.getDestination(cell, Direction.NORTH);
+        Cell south = field.getDestination(cell, Direction.SOUTH);
+        Cell west = field.getDestination(cell, Direction.WEST);
+        Cell east = field.getDestination(cell, Direction.EAST);
+
+        double diffNorth = field.get(north).type.isPassable() ? diffExp[north.row][north.col] : 0;
+        double diffSouth = field.get(south).type.isPassable() ? diffExp[south.row][south.col] : 0;
+        double diffWest = field.get(west).type.isPassable() ? diffExp[west.row][west.col] : 0;
+        double diffEast = field.get(east).type.isPassable() ? diffExp[east.row][east.col] : 0;
+
+        double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
+
+        System.err.println("Diffusion for " + cell + ":  " + diffNorth + " " + diffEast + " " + diffSouth + " " + diffWest);
+        if (maxDiff == 0.0) {
+            return null;
+        }
+        if (diffNorth == maxDiff) {
+            return Direction.NORTH;
+        }
+        else if (diffSouth == maxDiff) {
+            return Direction.SOUTH;
+        }
+        else if (diffWest == maxDiff) {
+            return Direction.WEST;
+        }
+        return Direction.EAST;
+    }
+
+    private void print(int[][] diffExp) {
+        for(int row = 0; row < diffExp.length; row ++) {
+            for(int col = 0; col < diffExp[0].length; col ++) {
+                System.err.print(diffExp[row][col] + " ");
+            }
+            System.err.println("");
+        }
+    }
+
+    private int get_dest(int row, int direction, int rows) {
+        int target_row = (row + direction) % rows;
+        if (target_row < 0) {
+            target_row += rows;
+        }
+        return target_row;
     }
 
     private void explore(IField field, Set<Cell> myAnts, Set<Cell> orderedAnts) {
