@@ -36,11 +36,11 @@ public class CustomBot extends AbstractHiveMind {
         for(int row = 0; row < info.rows; row ++) {
             for(int col = 0; col < info.cols; col ++) {
                 Owned o = field.get(row, col);
-                if (!o.explored) {
+                if (!o.explored  || (o.type.equals(Cell.Type.HILL) && o.isEnemys())) {
                     diffExp[row][col] = Integer.MAX_VALUE;
                     diffusedExp[row][col] = true;
                 }
-                if (o.type.equals(Cell.Type.WATER) || o.type.equals(Cell.Type.HILL)) {
+                if (o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.HILL) && o.isMine())) {
                     diffExp[row][col] = 0;
                     diffusedExp[row][col] = true;
                 }
@@ -301,8 +301,6 @@ public class CustomBot extends AbstractHiveMind {
     }
 
     private boolean isMyHill(IField field, Cell cell) {
-        Owned p = field.get(cell);
-        return p.type == Cell.Type.HILL && p.isMine();
-    }
+        Owned p = field.get(cell);    }
 
 }

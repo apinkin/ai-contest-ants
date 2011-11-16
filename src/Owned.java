@@ -34,6 +34,10 @@ public class Owned {
         return owner <= OWNER_NOBODY;
     }
 
+    public boolean isEnemys() {
+        return owner > OWNER_ME;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (obj == null) {
