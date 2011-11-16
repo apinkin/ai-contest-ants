@@ -13,7 +13,6 @@ public class AStarPathFinder extends AStar<Cell> implements IPathFinder {
 
 	@Override
 	public List<PathNode> computePath(Cell from, Cell to) {
-        System.err.println("Finding path from " + from + " to " + to);
         setGoal(to);
 
         long begin = System.currentTimeMillis();
@@ -22,7 +21,8 @@ public class AStarPathFinder extends AStar<Cell> implements IPathFinder {
 
         //System.err.println("Time = " + (end - begin) + " ms" );
         //System.err.println("Expanded = " + getExpandedCounter());
-        //System.err.println("Cost = " + getCost());
+        if (nodes != null && !getCost().isInfinite())
+            System.err.println("Path from " + from + " to " + to + "  cost : " + getCost());
 
 //        if(nodes == null)
 //            System.err.println("No path");
@@ -33,7 +33,7 @@ public class AStarPathFinder extends AStar<Cell> implements IPathFinder {
 //                System.err.println();
 //        }
 
-        if (nodes == null) {
+        if (nodes == null || getCost().isInfinite()) {
             return null;
         }
 
@@ -62,7 +62,8 @@ public class AStarPathFinder extends AStar<Cell> implements IPathFinder {
         if (from.equals(to))
             return 0.0;
 
-        if (field.get(to).type.isPassable() && !isMyHill(to))
+        //  && !field.getUnexplored().contains(to)
+        if (field.get(to).type.isPassable() && !isMyHill(to) && !field.getUnexplored().contains(to))
             return 1.0;
 
         return Double.MAX_VALUE;

@@ -13,14 +13,107 @@ public class CustomBot extends AbstractHiveMind {
     protected void doTurn(IField field) {
         //System.err.println("Current turn: " + field.getTurnNumber());
 
-        Set<Cell> ants = field.getMyAntPositions();
-        Set<Cell> foods = field.getSeenFood();
+        Set<Cell> myAnts = field.getMyAntPositions();
+        Set<Cell> orderedAnts = new HashSet<Cell>();
 
+        collectFood(field, myAnts, orderedAnts);
+
+        attack(field, myAnts, orderedAnts);
+
+        explore(field, myAnts, orderedAnts);
+
+        //randomMoves(field, myAnts, orderedAnts);
+
+    }
+
+    private void explore(IField field, Set<Cell> myAnts, Set<Cell> orderedAnts) {
+        int remainingAnts = myAnts.size() - orderedAnts.size();
+        if (remainingAnts <= 0) {
+            return;
+        }
+
+        Set<Cell> unexplored = field.getUnexplored();
+        System.err.println("exploration phase... remaining myAnts: " + remainingAnts);
+        Set<Cell> exploredEdge = new HashSet<Cell>();
+        for (Cell cell : unexplored) {
+            for (Direction direction: Direction.values()) {
+                Cell neighbour = field.getDestination(cell, direction);
+                if (!unexplored.contains(neighbour) && field.get(neighbour).type.isPassable()) {
+                    exploredEdge.add(neighbour);
+                    break;
+                }
+            }
+        }
+        //System.err.println("explored edge: " + exploredEdge.size());
+
+
+        List<Route> unseenRoutes = new ArrayList<Route>();
+        for (Cell antLoc : myAnts) {
+            if (!orderedAnts.contains(antLoc)) {
+                for (Cell unseenLoc : exploredEdge) {
+                    int distance = Math.abs(unseenLoc.row - antLoc.row) + Math.abs(unseenLoc.col - antLoc.col);
+                    Route route = new Route(antLoc, unseenLoc, distance, null);
+                    unseenRoutes.add(route);
+                }
+            }
+        }
+        Collections.sort(unseenRoutes);
+
+        for (Route route : unseenRoutes) {
+            List<PathNode> path = field.getPathFinder().computePath(route.getStart(), route.getEnd());
+            if (path != null && path.get(0).direction != null && !orderedAnts.contains(route.getStart())) {
+                issueOrder(route.getStart(), path.get(0).direction);
+                orderedAnts.add(route.getStart());
+                System.err.println("Sent ant to explore: " + route.getStart() + "  to " + route.getEnd());
+                remainingAnts--;
+            }
+            if (remainingAnts <= 0) {
+                break;
+            }
+        }
+    }
+
+    private void attack(IField field, Set<Cell> myAnts, Set<Cell> orderedAnts) {
+        int remainingAnts = myAnts.size() - orderedAnts.size();
+        if (remainingAnts <= 0) {
+            return;
+        }
+
+        if (remainingAnts > (field.getEnemyAnts().size() * 3) /*&& remainingAnts >= 100*/) {
+            System.err.println("attack phase... remaining myAnts: " + remainingAnts);
+            List<Route> hillRoutes = new ArrayList<Route>();
+            for (Cell hillLoc : field.getEnemyHills()) {
+                for (Cell antLoc : myAnts) {
+                    if (!orderedAnts.contains(antLoc)) {
+                        int distance = Math.abs(hillLoc.row - antLoc.row) + Math.abs(hillLoc.col - antLoc.col);
+                        Route route = new Route(antLoc, hillLoc, distance, null);
+                        hillRoutes.add(route);
+                    }
+                }
+            }
+            Collections.sort(hillRoutes);
+            for (Route route : hillRoutes) {
+                List<PathNode> path = field.getPathFinder().computePath(route.getStart(), route.getEnd());
+                if (path != null) {
+                    issueOrder(route.getStart(), path.get(0).direction);
+                    orderedAnts.add(route.getStart());
+                    System.err.println("Sent ant after hill: " + route.getStart() + "  to " + route.getEnd());
+                    remainingAnts--;
+                    if (remainingAnts <= 0) {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private void collectFood(IField field, Set<Cell> ants, Set<Cell> orderedAnts) {
         System.err.println("food phase...");
 
+        Set<Cell> foods = field.getSeenFood();
         Map<Cell, Cell> foodTargets = new HashMap<Cell, Cell>();
         Map<Cell, Direction> foodDirections = new HashMap<Cell, Direction>();
-        Set<Cell> orderedAnts = new HashSet<Cell>();
+        Map<Cell, Cell> foodDestinations = new HashMap<Cell, Cell>();
 
         List<Route> foodRoutes = new ArrayList<Route>();
         TreeSet<Cell> sortedFood = new TreeSet<Cell>(foods);
@@ -43,6 +136,7 @@ public class CustomBot extends AbstractHiveMind {
                     && !foodTargets.containsValue(route.getStart())) {
                 foodTargets.put(route.getEnd(), route.getStart());
                 foodDirections.put(route.getStart(), route.getDirection());
+                foodDestinations.put(route.getStart(), route.getEnd());
             }
         }
 
@@ -54,74 +148,14 @@ public class CustomBot extends AbstractHiveMind {
             Cell dest = field.getDestination(myAnt, direction);
             if (field.get(dest).type.isPassable() && !isMyHill(field, dest)) {
                 issueOrder(myAnt, direction);
+                System.err.println("Sent ant after food: " + myAnt + "  to " + foodDestinations.get(myAnt));
                 orderedAnts.add(myAnt);
             }
         }
+    }
 
-        // attack hills
-        int remainingAnts = ants.size() - orderedAnts.size();
-        if (remainingAnts <= 0) {
-            return;
-        }
-        if (remainingAnts > (field.getEnemyAnts().size() * 3) && remainingAnts >= 100) {
-            System.err.println("attack phase... remaining ants: " + remainingAnts);
-            List<Route> hillRoutes = new ArrayList<Route>();
-            for (Cell hillLoc : field.getEnemyHills()) {
-                for (Cell antLoc : sortedAnts) {
-                    if (!orderedAnts.contains(antLoc)) {
-                        int distance = Math.abs(hillLoc.row - antLoc.row) + Math.abs(hillLoc.col - antLoc.col);
-                        Route route = new Route(antLoc, hillLoc, distance, null);
-                        hillRoutes.add(route);
-                    }
-                }
-            }
-            Collections.sort(hillRoutes);
-            for (Route route : hillRoutes) {
-                List<PathNode> path = field.getPathFinder().computePath(route.getStart(), route.getEnd());
-                if (path != null) {
-                    issueOrder(route.getStart(), path.get(0).direction);
-                    orderedAnts.add(route.getStart());
-                    remainingAnts--;
-                    if (remainingAnts <= 0) {
-                        break;
-                    }
-                }
-            }
-        }
-
-        // let's explore now
-        remainingAnts = ants.size() - orderedAnts.size();
-        if (remainingAnts <= 0) {
-            return;
-        }
-        System.err.println("exploration phase... remaining ants: " + remainingAnts);
-        List<Route> unseenRoutes = new ArrayList<Route>();
-        for (Cell antLoc : ants) {
-            if (!orderedAnts.contains(antLoc)) {
-                for (Cell unseenLoc : field.getUnexplored()) {
-                    int distance = Math.abs(unseenLoc.row - antLoc.row) + Math.abs(unseenLoc.col - antLoc.col);
-                    Route route = new Route(antLoc, unseenLoc, distance, null);
-                    unseenRoutes.add(route);
-                }
-            }
-        }
-        Collections.sort(unseenRoutes);
-        int max_iterations = remainingAnts;
-        int iter_count = 0;
-        for (Route route : unseenRoutes) {
-            List<PathNode> path = field.getPathFinder().computePath(route.getStart(), route.getEnd());
-            if (path != null && path.get(0).direction != null) {
-                issueOrder(route.getStart(), path.get(0).direction);
-                orderedAnts.add(route.getStart());
-                remainingAnts--;
-            }
-            iter_count++;
-            if (remainingAnts <= 0 || iter_count >= max_iterations) {
-                break;
-            }
-        }
-
-        // if an ant still has nothing to do, just make a random move
+    private void randomMoves(IField field, Set<Cell> ants, Set<Cell> orderedAnts) {
+        int remainingAnts;
         remainingAnts = ants.size() - orderedAnts.size();
         if (remainingAnts <= 0) {
             return;
@@ -134,11 +168,11 @@ public class CustomBot extends AbstractHiveMind {
                     if (direction != null) {
                         issueOrder(ant, direction);
                         orderedAnts.add(ant);
+                        System.err.println("Sent ant for random walk: " + ant + "  to " + field.getDestination(ant, direction));
                     }
                 }
             }
         }
-
     }
 
     private Direction getRandomDirection(IField field, Cell ant) {
