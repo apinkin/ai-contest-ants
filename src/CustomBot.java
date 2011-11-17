@@ -9,7 +9,9 @@ import java.util.TreeSet;
 
 public class CustomBot extends AbstractHiveMind {
     
-    private static boolean LOGGING_ENABLED = true;
+    private static boolean LOGGING_ENABLED = false;
+
+    private static boolean DIFF_IGNORE_WATER = true;
 
     private void log(String s) {
         if (LOGGING_ENABLED)
@@ -63,19 +65,37 @@ public class CustomBot extends AbstractHiveMind {
         }
 
         // iterate to diffuse the influence
-        int iterations = 100;
+        int iterations = 150;
         for (int i=0; i<iterations; i++) {
             for(int row = 0; row < info.rows; row ++) {
                 for(int col = 0; col < info.cols; col ++) {
                     if (diffusedExp[row][col])
                         continue;
-                    double up = diffExp[get_dest(row, -1, info.rows)][col];
-                    double down = diffExp[get_dest(row, 1, info.rows)][col];
-                    double left = diffExp[row][get_dest(col, -1, info.cols)];
-                    double right = diffExp[row][get_dest(col, 1, info.cols)];
 
                     double divider = 4.0;
-                    diffExp[row][col] = up/divider + down/divider + left/divider + right/divider;
+
+                    int up_row = get_dest(row, -1, info.rows); int up_col = col;
+                    double up = diffExp[up_row][up_col];
+                    if (DIFF_IGNORE_WATER && field.get(up_row, up_col).type.equals(Cell.Type.WATER))
+                        divider--;
+
+                    int down_row = get_dest(row, 1, info.rows); int down_col = col;
+                    double down = diffExp[down_row][down_col];
+                    if (DIFF_IGNORE_WATER && field.get(down_row, down_col).type.equals(Cell.Type.WATER))
+                        divider--;
+
+                    int left_row = row; int left_col = get_dest(col, -1, info.cols);
+                    double left = diffExp[left_row][left_col];
+                    if (DIFF_IGNORE_WATER && field.get(left_row, left_col).type.equals(Cell.Type.WATER))
+                        divider--;
+
+                    int right_row = row; int right_col = get_dest(col, 1, info.cols);
+                    double right = diffExp[right_row][right_col];
+                    if (DIFF_IGNORE_WATER && field.get(right_row, right_col).type.equals(Cell.Type.WATER))
+                        divider--;
+
+                    if (divider>0)
+                        diffExp[row][col] = (up + down +left + right)/divider;
                 }
             }
         }
