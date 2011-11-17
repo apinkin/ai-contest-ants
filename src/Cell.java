@@ -5,7 +5,8 @@ public class Cell implements Comparable<Cell> {
         WATER, FOOD, LAND, DEAD, ANT, HILL;
 
         public boolean isPassable() {
-            return this == LAND || this == DEAD || this == HILL || this == FOOD;
+            return this == LAND || this == DEAD || this == HILL;
+            //return this == LAND || this == DEAD || this == HILL || this == FOOD;
         }
     }
 

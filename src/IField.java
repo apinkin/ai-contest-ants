@@ -22,6 +22,7 @@ public interface IField  {
 
     Set<Cell> getMyAntPositions();
     Set<Cell> getUnexplored();
+    Set<Cell> getMyHills();
 
     int cols();
     int rows();

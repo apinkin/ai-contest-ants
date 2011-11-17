@@ -211,6 +211,21 @@ public class Field implements IMutableField {
     }
 
     @Override
+    public Set<Cell> getMyHills() {
+        Map<Integer, Set<Cell>> map = this.getMappingFor(Cell.Type.HILL);
+
+        Set<Cell> result = new LinkedHashSet<Cell>();
+
+        for(Entry<Integer, Set<Cell>> entry : map.entrySet()) {
+            if(entry.getKey() == Owned.OWNER_ME) {
+                result.addAll(entry.getValue());
+            }
+        }
+
+        return result;
+    }
+
+    @Override
     public Set<Cell> getEnemyAnts() {
         Map<Integer, Set<Cell>> map = this.getMappingFor(Cell.Type.ANT);
 
