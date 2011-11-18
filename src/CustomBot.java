@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -64,8 +65,10 @@ public class CustomBot extends AbstractHiveMind {
             }
         }
 
+        double[][] neighbors = deepClone(diffExp);
+
         // iterate to diffuse the influence
-        int iterations = 150;
+        int iterations = (info.rows + info.cols)/4;
         for (int i=0; i<iterations; i++) {
             for(int row = 0; row < info.rows; row ++) {
                 for(int col = 0; col < info.cols; col ++) {
@@ -95,9 +98,12 @@ public class CustomBot extends AbstractHiveMind {
                         divider--;
 
                     if (divider>0)
-                        diffExp[row][col] = (up + down +left + right)/divider;
+                        neighbors[row][col] = (up + down +left + right)/divider;
                 }
             }
+            double[][] tmp = neighbors;
+            neighbors = diffExp;
+            diffExp = tmp;
         }
         //print(diffExp);
 
@@ -112,6 +118,35 @@ public class CustomBot extends AbstractHiveMind {
                 log("Ant stuck: " + antLoc);
             }
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> T[] deepClone(T[] src){
+      if(src == null){
+        return null;
+      }
+      T[] dest = src.clone();
+      for (int i = 0; i < dest.length; i++) {
+        Object e = dest[i];
+        if (e != null && e.getClass().isArray()) {
+          // if it is null or not an array, it was taken care of by the clone()
+          if (e instanceof Object[]) {
+            // using recursion to reach all dimensions
+            dest[i] = (T)(deepClone((Object[])e));
+          }
+          else {
+            // primitive arr
+            if(e instanceof byte[])        dest[i] = (T)((byte[]) e).clone();
+            else if(e instanceof short[])  dest[i] = (T)((short[]) e).clone();
+            else if(e instanceof int[])    dest[i] = (T)((int[]) e).clone();
+            else if(e instanceof long[])   dest[i] = (T)((long[]) e).clone();
+            else if(e instanceof float[])  dest[i] = (T)((float[]) e).clone();
+            else if(e instanceof double[]) dest[i] = (T)((double[]) e).clone();
+            else if(e instanceof boolean[])dest[i] = (T)((boolean[]) e).clone();
+          }
+        }
+      }
+      return dest;
     }
 
     private boolean isCloseToMyHill(IField field, Set<Cell> myHills, Cell cell) {
@@ -132,15 +167,15 @@ public class CustomBot extends AbstractHiveMind {
         Cell west = field.getDestination(cell, Direction.WEST);
         Cell east = field.getDestination(cell, Direction.EAST);
 
-        double diffNorth = field.get(north).type.isPassable() ? diffExp[north.row][north.col] : 0;
-        double diffSouth = field.get(south).type.isPassable() ? diffExp[south.row][south.col] : 0;
-        double diffWest = field.get(west).type.isPassable() ? diffExp[west.row][west.col] : 0;
-        double diffEast = field.get(east).type.isPassable() ? diffExp[east.row][east.col] : 0;
+        double diffNorth = field.get(north).type.isPassable() ? diffExp[north.row][north.col] : -1;
+        double diffSouth = field.get(south).type.isPassable() ? diffExp[south.row][south.col] : -1;
+        double diffWest = field.get(west).type.isPassable() ? diffExp[west.row][west.col] : -1;
+        double diffEast = field.get(east).type.isPassable() ? diffExp[east.row][east.col] : -1;
 
         double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
 
         //log("Diffusion for " + cell + ":  " + diffNorth + " " + diffEast + " " + diffSouth + " " + diffWest);
-        if (maxDiff == 0.0) {
+        if (maxDiff < 0.0) {
             return null;
         }
         if (diffNorth == maxDiff) {
