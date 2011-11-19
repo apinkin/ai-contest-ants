@@ -1,5 +1,4 @@
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -12,7 +11,9 @@ public class CustomBot extends AbstractHiveMind {
     
     private static boolean LOGGING_ENABLED = false;
 
-    private static boolean DIFF_IGNORE_WATER = true;
+    private static int MAX_INFLUENCE = Integer.MAX_VALUE;
+
+    private static Map<Cell,Integer> lastSeen = new HashMap<Cell, Integer>();
 
     private void log(String s) {
         if (LOGGING_ENABLED)
@@ -22,12 +23,15 @@ public class CustomBot extends AbstractHiveMind {
     @Override
     protected void doTurn(IField field) {
         Utils.tic();
+
         //log("Current turn: " + field.getTurnNumber());
 
         //Set<Cell> myAnts = field.getMyAntPositions();
         //Set<Cell> orderedAnts = new HashSet<Cell>();
 
         //collectFood(field, myAnts, orderedAnts);
+
+        //updateLastSeen(field);
 
         diffuse(field);
 
@@ -50,60 +54,54 @@ public class CustomBot extends AbstractHiveMind {
             for(int col = 0; col < info.cols; col ++) {
                 Cell cell = new Cell(row, col);
                 Owned o = field.get(row, col);
-                if (o.type.equals(Cell.Type.FOOD) || !o.explored  || (o.type.equals(Cell.Type.HILL) && o.isEnemys())) {
-                    diffExp[row][col] = Integer.MAX_VALUE;
+
+                if (o.type.equals(Cell.Type.HILL) && o.isEnemys()) {
+                    diffExp[row][col] = MAX_INFLUENCE;
                     diffusedExp[row][col] = true;
                 }
-                if (o.type.equals(Cell.Type.ANT) && o.isEnemys() && isCloseToMyHill(field, myHills, cell)) {
-                    diffExp[row][col] = Integer.MAX_VALUE;
+                else if (o.type.equals(Cell.Type.FOOD) ) {
+                    diffExp[row][col] = MAX_INFLUENCE;
                     diffusedExp[row][col] = true;
                 }
-                if (o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.HILL) && o.isMine())) {
+                else if (o.type.equals(Cell.Type.ANT) && o.isEnemys() && isCloseToMyHill(field, myHills, cell)) {
+                    diffExp[row][col] = MAX_INFLUENCE;
+                    diffusedExp[row][col] = true;
+                }
+                else if (o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.HILL) && o.isMine())) {
                     diffExp[row][col] = 0;
                     diffusedExp[row][col] = true;
                 }
+                else if (!o.explored) {
+                    diffExp[row][col] = MAX_INFLUENCE / 2;
+                    diffusedExp[row][col] = true;
+                }
+                else {
+                    // lastSeen or unexplored
+                    //Integer seenTurn = lastSeen.get(cell);
+                    //log("Last seen " + cell + ":  " + seenTurn);
+                    //int seenTurnsAgo = field.getTurnNumber() - seenTurn;
+                    //diffExp[row][col] = MAX_INFLUENCE / 2  - ((200 - seenTurnsAgo) * (MAX_INFLUENCE / 200 / 2));
+                }
+
             }
         }
 
-        double[][] neighbors = deepClone(diffExp);
-
         // iterate to diffuse the influence
-        int iterations = (info.rows + info.cols)/4;
+        int iterations = 100;
         for (int i=0; i<iterations; i++) {
             for(int row = 0; row < info.rows; row ++) {
                 for(int col = 0; col < info.cols; col ++) {
                     if (diffusedExp[row][col])
                         continue;
+                    double up = diffExp[get_dest(row, -1, info.rows)][col];
+                    double down = diffExp[get_dest(row, 1, info.rows)][col];
+                    double left = diffExp[row][get_dest(col, -1, info.cols)];
+                    double right = diffExp[row][get_dest(col, 1, info.cols)];
 
                     double divider = 4.0;
-
-                    int up_row = get_dest(row, -1, info.rows); int up_col = col;
-                    double up = diffExp[up_row][up_col];
-                    if (DIFF_IGNORE_WATER && field.get(up_row, up_col).type.equals(Cell.Type.WATER))
-                        divider--;
-
-                    int down_row = get_dest(row, 1, info.rows); int down_col = col;
-                    double down = diffExp[down_row][down_col];
-                    if (DIFF_IGNORE_WATER && field.get(down_row, down_col).type.equals(Cell.Type.WATER))
-                        divider--;
-
-                    int left_row = row; int left_col = get_dest(col, -1, info.cols);
-                    double left = diffExp[left_row][left_col];
-                    if (DIFF_IGNORE_WATER && field.get(left_row, left_col).type.equals(Cell.Type.WATER))
-                        divider--;
-
-                    int right_row = row; int right_col = get_dest(col, 1, info.cols);
-                    double right = diffExp[right_row][right_col];
-                    if (DIFF_IGNORE_WATER && field.get(right_row, right_col).type.equals(Cell.Type.WATER))
-                        divider--;
-
-                    if (divider>0)
-                        neighbors[row][col] = (up + down +left + right)/divider;
+                    diffExp[row][col] = up/divider + down/divider + left/divider + right/divider;
                 }
             }
-            double[][] tmp = neighbors;
-            neighbors = diffExp;
-            diffExp = tmp;
         }
         //print(diffExp);
 
@@ -118,35 +116,6 @@ public class CustomBot extends AbstractHiveMind {
                 log("Ant stuck: " + antLoc);
             }
         }
-    }
-
-    @SuppressWarnings("unchecked")
-    public static <T> T[] deepClone(T[] src){
-      if(src == null){
-        return null;
-      }
-      T[] dest = src.clone();
-      for (int i = 0; i < dest.length; i++) {
-        Object e = dest[i];
-        if (e != null && e.getClass().isArray()) {
-          // if it is null or not an array, it was taken care of by the clone()
-          if (e instanceof Object[]) {
-            // using recursion to reach all dimensions
-            dest[i] = (T)(deepClone((Object[])e));
-          }
-          else {
-            // primitive arr
-            if(e instanceof byte[])        dest[i] = (T)((byte[]) e).clone();
-            else if(e instanceof short[])  dest[i] = (T)((short[]) e).clone();
-            else if(e instanceof int[])    dest[i] = (T)((int[]) e).clone();
-            else if(e instanceof long[])   dest[i] = (T)((long[]) e).clone();
-            else if(e instanceof float[])  dest[i] = (T)((float[]) e).clone();
-            else if(e instanceof double[]) dest[i] = (T)((double[]) e).clone();
-            else if(e instanceof boolean[])dest[i] = (T)((boolean[]) e).clone();
-          }
-        }
-      }
-      return dest;
     }
 
     private boolean isCloseToMyHill(IField field, Set<Cell> myHills, Cell cell) {
@@ -167,15 +136,15 @@ public class CustomBot extends AbstractHiveMind {
         Cell west = field.getDestination(cell, Direction.WEST);
         Cell east = field.getDestination(cell, Direction.EAST);
 
-        double diffNorth = field.get(north).type.isPassable() ? diffExp[north.row][north.col] : -1;
-        double diffSouth = field.get(south).type.isPassable() ? diffExp[south.row][south.col] : -1;
-        double diffWest = field.get(west).type.isPassable() ? diffExp[west.row][west.col] : -1;
-        double diffEast = field.get(east).type.isPassable() ? diffExp[east.row][east.col] : -1;
+        double diffNorth = field.get(north).type.isPassable() ? diffExp[north.row][north.col] : 0;
+        double diffSouth = field.get(south).type.isPassable() ? diffExp[south.row][south.col] : 0;
+        double diffWest = field.get(west).type.isPassable() ? diffExp[west.row][west.col] : 0;
+        double diffEast = field.get(east).type.isPassable() ? diffExp[east.row][east.col] : 0;
 
         double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
 
-        //log("Diffusion for " + cell + ":  " + diffNorth + " " + diffEast + " " + diffSouth + " " + diffWest);
-        if (maxDiff < 0.0) {
+        log("Diffusion for " + cell + ":  " + diffNorth + " " + diffEast + " " + diffSouth + " " + diffWest);
+        if (maxDiff == 0.0) {
             return null;
         }
         if (diffNorth == maxDiff) {
@@ -382,5 +351,26 @@ public class CustomBot extends AbstractHiveMind {
         Owned p = field.get(cell);
         return p.type == Cell.Type.HILL && p.isMine();
     }
+
+    private Set<Cell> getAllSeen(IField field) {
+        Set<Cell> result = new HashSet<Cell>();
+
+        for(int row = 0; row < info.rows; row ++) {
+            for(int col = 0; col < info.cols; col ++) {
+                Cell c = Cell.of(row, col);
+                if (field.isSeen(c))
+                    result.add(c);
+            }
+        }
+        return result;
+    }
+
+    private void updateLastSeen(IField field) {
+        Set<Cell> currentSeen = getAllSeen(field);
+        for(Cell c : currentSeen) {
+            lastSeen.put(c, field.getTurnNumber());
+        }
+    }
+
 
 }
