@@ -5,7 +5,6 @@ from collections import deque, defaultdict
 
 from fractions import Fraction
 import operator
-import string
 from game import Game
 from copy import deepcopy
 try:
@@ -51,22 +50,22 @@ class Ants(Game):
         self.engine_seed = options.get('engine_seed', randint(-maxint-1, maxint))
         self.player_seed = options.get('player_seed', randint(-maxint-1, maxint))
         seed(self.engine_seed)
-        self.food_rate = options.get('food_rate', (2,8)) # total food
+        self.food_rate = options.get('food_rate', (5,11)) # total food
         if type(self.food_rate) in (list, tuple):
             self.food_rate = randrange(self.food_rate[0], self.food_rate[1]+1)
-        self.food_turn = options.get('food_turn', (12,30)) # per turn
+        self.food_turn = options.get('food_turn', (19,37)) # per turn
         if type(self.food_turn) in (list, tuple):
             self.food_turn = randrange(self.food_turn[0], self.food_turn[1]+1)
         self.food_start = options.get('food_start', (75,175)) # per land area
         if type(self.food_start) in (list, tuple):
             self.food_start = randrange(self.food_start[0], self.food_start[1]+1)
-        self.food_visible = options.get('food_visible', (1,3)) # in starting loc
+        self.food_visible = options.get('food_visible', (3,5)) # in starting loc
         if type(self.food_visible) in (list, tuple):
             self.food_visible = randrange(self.food_visible[0], self.food_visible[1]+1)
         self.food_extra = Fraction(0,1)
 
-        self.cutoff_percent = options.get('cutoff_percent', 0.90)
-        self.cutoff_turn = options.get('cutoff_turn', 100)
+        self.cutoff_percent = options.get('cutoff_percent', 0.85)
+        self.cutoff_turn = options.get('cutoff_turn', 150)
 
         self.do_attack = {
             'focus':   self.do_attack_focus,
@@ -176,8 +175,6 @@ class Ants(Game):
         # the engine may kill players before the game starts and this is needed to prevent errors
         self.orders = [[] for i in range(self.num_players)]
         
-        self.probable_rank = None
-        self.probably_turn = None
 
     def distance(self, a_loc, b_loc):
         """ Returns distance between x and y squared """
@@ -451,15 +448,15 @@ class Ants(Game):
 
         # next list all transient objects
         for update in updates:
-            type, row, col = update[0:3]
+            ilk, row, col = update[0:3]
 
             # only include updates to squares which are visible
             # and the current players dead ants
-            if v[row][col] or (type == 'd' and update[-1] == player):
+            if v[row][col] or (ilk == 'd' and update[-1] == player):
                 visible_updates.append(update)
 
                 # switch player perspective of player numbers
-                if type in ['a', 'd', 'h']:
+                if ilk in ['a', 'd', 'h']:
                     # an ant can appear in a bots vision and die the same turn
                     # in this case the ant has not been assigned a number yet
                     #   assign the enemy the next index
@@ -481,7 +478,7 @@ class Ants(Game):
         # hills not razed
         changes.extend(sorted(
             [['h', hill.loc[0], hill.loc[1], hill.owner]
-             for loc, hill in self.hills.items()
+             for _, hill in self.hills.items()
              if hill.killed_by is None]
         ))
 
@@ -595,6 +592,9 @@ class Ants(Game):
                     invalid.append((line,'not player ant'))
                     continue
             except IndexError:
+                invalid.append((line,'out of bounds'))
+                continue
+            if loc[0] < 0 or loc[1] < 0:
                 invalid.append((line,'out of bounds'))
                 continue
             dest = self.destination(loc, AIM[direction])
@@ -737,7 +737,9 @@ class Ants(Game):
         hill.end_turn = self.turn
         hill.killed_by = killed_by
         self.score[killed_by] += HILL_POINTS
-        self.score[hill.owner] += RAZE_POINTS
+        if not hill.raze_points:
+            hill.raze_points = True
+            self.score[hill.owner] += RAZE_POINTS
         # reset cutoff_turns
         self.cutoff_turns = 0
 
@@ -1367,7 +1369,10 @@ class Ants(Game):
             A game is over when there are no players remaining, or a single
               winner remaining.
         """
-        if len(self.remaining_players()) <= 1:
+        if len(self.remaining_players()) < 1:
+            self.cutoff = 'extermination'
+            return True
+        if len(self.remaining_players()) == 1:
             self.cutoff = 'lone survivor'
             return True
         if self.cutoff_turns >= self.cutoff_turn:
@@ -1379,24 +1384,17 @@ class Ants(Game):
         if self.is_rank_stabilized():
             self.cutoff = 'rank stabilized'
             return True
-              
-        # check if not ending a game earlier makes any difference
-        if self.probably_turn is None:
-            probable_winner = list(set(list(self.remaining_players())) & set(self.remaining_hills()))
-            if len(probable_winner) <= 1:
-                probable_score = self.score[:]
-                probable_score[probable_winner[0]] += sum([HILL_POINTS for hill in self.hills.values()
-                                                           if hill.killed_by == None
-                                                           and hill.owner != probable_winner[0]])            
-                # entering extended player period
-                self.probable_rank = [sorted(probable_score, reverse=True).index(x) for x in probable_score]
-                self.probably_turn = self.turn
-            
+
         return False
 
     def kill_player(self, player):
         """ Used by engine to signal that a player is out of the game """
         self.killed[player] = True
+        # remove player's points for hills
+        for hill in self.hills.values():
+            if hill.owner == player and not hill.raze_points:
+                hill.raze_points = True
+                self.score[player] += RAZE_POINTS
 
     def start_game(self):
         """ Called by engine at the start of the game """
@@ -1413,23 +1411,25 @@ class Ants(Game):
     def finish_game(self):
         """ Called by engine at the end of the game """
         # lone survivor gets bonus of killing all other hills
+        # owners of hills should lose points
         players = self.remaining_players()
         if len(players) == 1:
-            self.bonus[players[0]] += sum([HILL_POINTS for hill in self.hills.values()
-                                           if hill.killed_by == None
-                                           and hill.owner != players[0]])
-            self.score[players[0]] += self.bonus[players[0]]
+            for hill in self.hills.values():
+                if hill.owner != players[0]:
+                    if hill.killed_by == None:
+                        self.bonus[players[0]] += HILL_POINTS
+                        hill.killed_by = players[0]
+                    if not hill.raze_points:
+                        self.bonus[hill.owner] += RAZE_POINTS
+                        hill.raze_points = True
+            for player in range(self.num_players):
+                self.score[player] += self.bonus[player]
 
         self.calc_significant_turns()
         
         # check if a rule change lengthens games needlessly
         if self.cutoff is None:
             self.cutoff = 'turn limit reached'
-        if self.probable_rank is not None:
-            if self.probable_rank == self.ranking_bots:
-                self.cutoff += " extended same"
-            else:
-                self.cutoff += " extended different"
 
     def start_turn(self):
         """ Called by engine at the start of the turn """
@@ -1705,7 +1705,7 @@ class Ants(Game):
             replay['ants'].append(ant_data)
 
         replay['hills'] = []
-        for loc, hill in self.hills.items():
+        for hill in self.hills.values():
             # mimic food data
             hill_data = [hill.loc[0], hill.loc[1], hill.owner]
             if not hill.end_turn:
@@ -1724,9 +1724,6 @@ class Ants(Game):
         replay['winning_turn'] = self.winning_turn
         replay['ranking_turn'] = self.ranking_turn
         replay['cutoff'] =  self.cutoff
-        if self.probable_rank is not None:
-            replay['probable_rank'] = self.probable_rank
-            replay['probable_turn'] = self.probably_turn
 
         return replay
 
@@ -1760,6 +1757,7 @@ class Hill:
         self.owner = owner
         self.end_turn = None
         self.killed_by = None
+        self.raze_points = False
 
         # used to order hills for spawn points
         # hills are chosen by the least recently spawned first

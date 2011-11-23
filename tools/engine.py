@@ -66,6 +66,7 @@ def run_game(game, botcmds, options):
     error_logs = options.get('error_logs', [None]*len(botcmds))
 
     capture_errors = options.get('capture_errors', False)
+    capture_errors_max = options.get('capture_errors_max', 510)
 
     turns = int(options['turns'])
     loadtime = float(options['loadtime']) / 1000
@@ -82,7 +83,7 @@ def run_game(game, botcmds, options):
     bot_status = []
     bot_turns = []
     if capture_errors:
-        error_logs = [HeadTail(log) for log in error_logs]
+        error_logs = [HeadTail(log, capture_errors_max) for log in error_logs]
     try:
         # create bot sandboxes
         for b, bot in enumerate(botcmds):
@@ -336,12 +337,14 @@ def get_moves(game, bots, bot_nums, time_limit, turn):
     bot_moves = [[] for b in bots]
     error_lines = [[] for b in bots]
     statuses = [None for b in bots]
-    start_time = time.time()
 
     # resume all bots
     for bot in bots:
         if bot.is_alive:
             bot.resume()
+
+    # don't start timing until the bots are started
+    start_time = time.time()
 
     # loop until received all bots send moves or are dead
     #   or when time is up
@@ -384,6 +387,36 @@ def get_moves(game, bots, bot_nums, time_limit, turn):
     for bot in bots:
         if bot.is_alive:
             bot.pause()
+
+    # check for any final output from bots
+    for b, bot in enumerate(bots):
+        if bot_finished[b]:
+            continue # already got bot moves
+        if not bot.is_alive:
+            error_lines[b].append(unicode('turn %4d bot %s crashed') % (turn, bot_nums[b]))
+            statuses[b] = 'crashed'
+            line = bot.read_error()
+            while line != None:
+                error_lines[b].append(line)
+                line = bot.read_error()
+            bot_finished[b] = True
+            game.kill_player(bot_nums[b])
+            continue # bot is dead
+
+        line = bot.read_line()
+        while line is not None and len(bot_moves[b]) < 40000:
+            line = line.strip()
+            if line.lower() == 'go':
+                bot_finished[b] = True
+                # bot finished sending data for this turn
+                break
+            bot_moves[b].append(line)
+            line = bot.read_line()
+
+        line = bot.read_error()
+        while line is not None and len(error_lines[b]) < 1000:
+            error_lines[b].append(line)
+            line = bot.read_error()
 
     # kill timed out bots
     for b, finished in enumerate(bot_finished):
