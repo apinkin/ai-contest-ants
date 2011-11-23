@@ -10,13 +10,19 @@ import java.util.TreeSet;
 public class CustomBot extends AbstractHiveMind {
     
     private static boolean LOGGING_ENABLED = false;
-    private static boolean LOGGING_VIS_ENABLED = false;
+
+    private static boolean LOGGING_VIS_ENABLED = true;
+    private static boolean LOGGING_VIS_MAIN_INFLUENCE = false;
+    private static boolean LOGGING_VIS_ANT_INFLUENCE = true;
 
     private static int INFLUENCE_MAX = Integer.MAX_VALUE;
     private static int INFLUENCE_FOOD = INFLUENCE_MAX;
     private static int INFLUENCE_ENEMY_HILL = INFLUENCE_MAX;
     private static int INFLUENCE_UNEXPLORED = INFLUENCE_MAX / 10;
     private static int INFLUENCE_MY_HILL_DEFEND = INFLUENCE_MAX;
+
+    private static String ANT_COLOR_ENEMY = "255 0 0";
+    private static String ANT_COLOR_MY = "0 255 0";
 
     private static Map<Cell,Integer> lastSeen = new HashMap<Cell, Integer>();
 
@@ -49,7 +55,7 @@ public class CustomBot extends AbstractHiveMind {
         boolean[][] diffusedExp = new boolean[info.rows][info.cols];
         Set<Cell> myHills = field.getMyHills();
 
-        // seed the influence map
+        // seed the main influence map
         for(int row = 0; row < info.rows; row ++) {
             for(int col = 0; col < info.cols; col ++) {
                 Cell cell = new Cell(row, col);
@@ -103,8 +109,41 @@ public class CustomBot extends AbstractHiveMind {
                 }
             }
         }
-        // visualize influence map
-        if (LOGGING_VIS_ENABLED)
+
+        // calculate my/enemy influence map
+        int influenceRadius = (int) Math.sqrt(info.attackRadiusSquared)+2;
+        int influenceRadiusSquared = influenceRadius*influenceRadius;
+        int[][] diffMyEnemy = new int[info.rows][info.cols];
+        boolean [][] diffMyEnemyFlag = new boolean[info.rows][info.cols];
+        calcAntsInfluence(field, influenceRadius, influenceRadiusSquared, diffMyEnemy, diffMyEnemyFlag, field.getMyAntPositions(), 1);
+        calcAntsInfluence(field, influenceRadius, influenceRadiusSquared, diffMyEnemy, diffMyEnemyFlag, field.getEnemyAnts(), -1);
+        // calculate min and max ant influence
+        int minAntInfluence = Integer.MAX_VALUE;
+        int maxAntInfluence = Integer.MIN_VALUE;
+        for(int row = 0; row < info.rows; row ++) {
+            for(int col = 0; col < info.cols; col ++) {
+                minAntInfluence = Math.min(minAntInfluence, diffMyEnemy[row][col] );
+                maxAntInfluence = Math.max(maxAntInfluence, diffMyEnemy[row][col] );
+            }
+        }
+        int antInfluenceRange = maxAntInfluence-minAntInfluence;
+
+        // visualize ant influence map
+        if (LOGGING_VIS_ENABLED && LOGGING_VIS_ANT_INFLUENCE)
+            for(int row = 0; row < info.rows; row ++) {
+                for(int col = 0; col < info.cols; col ++) {
+                    if (!diffMyEnemyFlag[row][col])
+                        continue;
+                    String color = (diffMyEnemy[row][col] > 0) ? ANT_COLOR_MY : ANT_COLOR_ENEMY;
+                    double influenceRange = (diffMyEnemy[row][col] > 0) ? maxAntInfluence : minAntInfluence;
+                    log_out("v setFillColor " + color + " " + diffMyEnemy[row][col]/ influenceRange);
+                    log_out("v tile " + row + " " + col);
+                    log_out("i " + row + " " + col + " " + diffMyEnemy[row][col]/ influenceRange);
+                }
+            }
+
+        // visualize main influence map
+        if (LOGGING_VIS_ENABLED && LOGGING_VIS_MAIN_INFLUENCE)
             for(int row = 0; row < info.rows; row ++) {
                 for(int col = 0; col < info.cols; col ++) {
                     log_out("v setFillColor 255 0 0 " + diffExp[row][col]/ INFLUENCE_MAX);
@@ -122,6 +161,21 @@ public class CustomBot extends AbstractHiveMind {
             }
             else {
                 log_err("Ant stuck: " + antLoc);
+            }
+        }
+    }
+
+    private void calcAntsInfluence(IField field, int influenceRadius, int influenceRadiusSquared, int[][] diffMyEnemy, boolean [][] diffMyEnemyFlag, Set<Cell> myAnts, int value) {
+        for (Cell myAnt : myAnts) {
+            for (int row = -influenceRadius; row<=influenceRadius; row++) {
+                for (int col = -influenceRadius; col<=influenceRadius; col++) {
+                    int crow = get_dest(myAnt.row, row, info.rows);
+                    int ccol = get_dest(myAnt.col, col, info.cols);
+                    if (field.getDistance(myAnt, Cell.of(crow, ccol)) <= influenceRadiusSquared) {
+                        diffMyEnemy[crow][ccol] += value;
+                        diffMyEnemyFlag[crow][ccol] = true;
+                    }
+                }
             }
         }
     }
