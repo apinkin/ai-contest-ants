@@ -10,21 +10,21 @@ import java.util.TreeSet;
 public class CustomBot extends AbstractHiveMind {
     
     private static boolean LOGGING_ENABLED = false;
+    private static boolean LOGGING_VIS_ENABLED = false;
 
-    private static int MAX_INFLUENCE = Integer.MAX_VALUE;
+    private static int INFLUENCE_MAX = Integer.MAX_VALUE;
+    private static int INFLUENCE_FOOD = INFLUENCE_MAX;
+    private static int INFLUENCE_ENEMY_HILL = INFLUENCE_MAX;
+    private static int INFLUENCE_UNEXPLORED = INFLUENCE_MAX / 10;
+    private static int INFLUENCE_MY_HILL_DEFEND = INFLUENCE_MAX;
 
     private static Map<Cell,Integer> lastSeen = new HashMap<Cell, Integer>();
 
-    private void log(String s) {
-        if (LOGGING_ENABLED)
-            System.err.println(s);
-    }
-    
     @Override
     protected void doTurn(IField field) {
         Utils.tic();
 
-        //log("Current turn: " + field.getTurnNumber());
+        //log_err("Current turn: " + field.getTurnNumber());
 
         //Set<Cell> myAnts = field.getMyAntPositions();
         //Set<Cell> orderedAnts = new HashSet<Cell>();
@@ -41,7 +41,7 @@ public class CustomBot extends AbstractHiveMind {
 
         //randomMoves(field, myAnts, orderedAnts);
 
-        log("Turn: " + field.getTurnNumber() + "    Time: " + Utils.toc());
+        log_err("Turn: " + field.getTurnNumber() + "    Time: " + Utils.toc());
     }
 
     private void diffuse(IField field) {
@@ -56,15 +56,15 @@ public class CustomBot extends AbstractHiveMind {
                 Owned o = field.get(row, col);
 
                 if (o.type.equals(Cell.Type.HILL) && o.isEnemys()) {
-                    diffExp[row][col] = MAX_INFLUENCE;
+                    diffExp[row][col] = INFLUENCE_ENEMY_HILL;
                     diffusedExp[row][col] = true;
                 }
                 else if (o.type.equals(Cell.Type.FOOD) ) {
-                    diffExp[row][col] = MAX_INFLUENCE;
+                    diffExp[row][col] = INFLUENCE_FOOD;
                     diffusedExp[row][col] = true;
                 }
                 else if (o.type.equals(Cell.Type.ANT) && o.isEnemys() && isCloseToMyHill(field, myHills, cell)) {
-                    diffExp[row][col] = MAX_INFLUENCE;
+                    diffExp[row][col] = INFLUENCE_MY_HILL_DEFEND;
                     diffusedExp[row][col] = true;
                 }
                 else if (o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.HILL) && o.isMine())) {
@@ -72,15 +72,15 @@ public class CustomBot extends AbstractHiveMind {
                     diffusedExp[row][col] = true;
                 }
                 else if (!o.explored) {
-                    diffExp[row][col] = MAX_INFLUENCE / 2;
+                    diffExp[row][col] = INFLUENCE_UNEXPLORED;
                     diffusedExp[row][col] = true;
                 }
                 else {
                     // lastSeen or unexplored
                     //Integer seenTurn = lastSeen.get(cell);
-                    //log("Last seen " + cell + ":  " + seenTurn);
+                    //log_err("Last seen " + cell + ":  " + seenTurn);
                     //int seenTurnsAgo = field.getTurnNumber() - seenTurn;
-                    //diffExp[row][col] = MAX_INFLUENCE / 2  - ((200 - seenTurnsAgo) * (MAX_INFLUENCE / 200 / 2));
+                    //diffExp[row][col] = INFLUENCE_MAX / 2  - ((200 - seenTurnsAgo) * (INFLUENCE_MAX / 200 / 2));
                 }
 
             }
@@ -103,17 +103,25 @@ public class CustomBot extends AbstractHiveMind {
                 }
             }
         }
-        //print(diffExp);
+        // visualize influence map
+        if (LOGGING_VIS_ENABLED)
+            for(int row = 0; row < info.rows; row ++) {
+                for(int col = 0; col < info.cols; col ++) {
+                    log_out("v setFillColor 255 0 0 " + diffExp[row][col]/ INFLUENCE_MAX);
+                    log_out("v tile " + row + " " + col);
+                    log_out("i " + row + " " + col + " " + diffExp[row][col]/ INFLUENCE_MAX);
+                }
+            }
 
         // now make decisions where free ants can go
         for (Cell antLoc : field.getMyAntPositions()) {
             Direction direction = getDirectionHighestDiff(field, antLoc, diffExp);
             if (direction != null) {
                 issueOrder(antLoc, direction);
-                log("Sent ant: " + antLoc + "  to " + direction);
+                log_err("Sent ant: " + antLoc + "  to " + direction);
             }
             else {
-                log("Ant stuck: " + antLoc);
+                log_err("Ant stuck: " + antLoc);
             }
         }
     }
@@ -143,7 +151,8 @@ public class CustomBot extends AbstractHiveMind {
 
         double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
 
-        log("Diffusion for " + cell + ":  " + diffNorth + " " + diffEast + " " + diffSouth + " " + diffWest);
+        //log_err("Diffusion for " + cell + ":  " + diffNorth + " " + diffEast + " " + diffSouth + " " + diffWest);
+        //System.out.println("i " + cell.row + " " + cell.col + " N: " + diffNorth + "  E: " + diffEast + "  S: " + diffSouth + "   W: " + diffWest );
         if (maxDiff == 0.0) {
             return null;
         }
@@ -164,7 +173,7 @@ public class CustomBot extends AbstractHiveMind {
             for(int col = 0; col < diffExp[0].length; col ++) {
                 System.err.print(diffExp[row][col] + " ");
             }
-            log("");
+            log_err("");
         }
     }
 
@@ -183,7 +192,7 @@ public class CustomBot extends AbstractHiveMind {
         }
 
         Set<Cell> unexplored = field.getUnexplored();
-        log("exploration phase... remaining myAnts: " + remainingAnts);
+        log_err("exploration phase... remaining myAnts: " + remainingAnts);
         Set<Cell> exploredEdge = new HashSet<Cell>();
         for (Cell cell : unexplored) {
             for (Direction direction: Direction.values()) {
@@ -194,7 +203,7 @@ public class CustomBot extends AbstractHiveMind {
                 }
             }
         }
-        //log("explored edge: " + exploredEdge.size());
+        //log_err("explored edge: " + exploredEdge.size());
 
 
         List<Route> unseenRoutes = new ArrayList<Route>();
@@ -214,7 +223,7 @@ public class CustomBot extends AbstractHiveMind {
             if (path != null && path.get(0).direction != null && !orderedAnts.contains(route.getStart())) {
                 issueOrder(route.getStart(), path.get(0).direction);
                 orderedAnts.add(route.getStart());
-                log("Sent ant to explore: " + route.getStart() + "  to " + route.getEnd());
+                log_err("Sent ant to explore: " + route.getStart() + "  to " + route.getEnd());
                 remainingAnts--;
             }
             if (remainingAnts <= 0) {
@@ -230,7 +239,7 @@ public class CustomBot extends AbstractHiveMind {
         }
 
         if (remainingAnts > (field.getEnemyAnts().size() * 3) /*&& remainingAnts >= 100*/) {
-            log("attack phase... remaining myAnts: " + remainingAnts);
+            log_err("attack phase... remaining myAnts: " + remainingAnts);
             List<Route> hillRoutes = new ArrayList<Route>();
             for (Cell hillLoc : field.getEnemyHills()) {
                 for (Cell antLoc : myAnts) {
@@ -247,7 +256,7 @@ public class CustomBot extends AbstractHiveMind {
                 if (path != null) {
                     issueOrder(route.getStart(), path.get(0).direction);
                     orderedAnts.add(route.getStart());
-                    log("Sent ant after hill: " + route.getStart() + "  to " + route.getEnd());
+                    log_err("Sent ant after hill: " + route.getStart() + "  to " + route.getEnd());
                     remainingAnts--;
                     if (remainingAnts <= 0) {
                         break;
@@ -258,7 +267,7 @@ public class CustomBot extends AbstractHiveMind {
     }
 
     private void collectFood(IField field, Set<Cell> ants, Set<Cell> orderedAnts) {
-        log("food phase...");
+        log_err("food phase...");
 
         Set<Cell> foods = field.getSeenFood();
         Map<Cell, Cell> foodTargets = new HashMap<Cell, Cell>();
@@ -298,7 +307,7 @@ public class CustomBot extends AbstractHiveMind {
             Cell dest = field.getDestination(myAnt, direction);
             if (field.get(dest).type.isPassable() && !isMyHill(field, dest)) {
                 issueOrder(myAnt, direction);
-                log("Sent ant after food: " + myAnt + "  to " + foodDestinations.get(myAnt));
+                log_err("Sent ant after food: " + myAnt + "  to " + foodDestinations.get(myAnt));
                 orderedAnts.add(myAnt);
             }
         }
@@ -310,7 +319,7 @@ public class CustomBot extends AbstractHiveMind {
         if (remainingAnts <= 0) {
             return;
         }
-        log("random phase...");
+        log_err("random phase...");
         for (Cell ant : ants) {
             if (!orderedAnts.contains(ant)) {
                 if (antHasOptions(field, ant)) {
@@ -318,7 +327,7 @@ public class CustomBot extends AbstractHiveMind {
                     if (direction != null) {
                         issueOrder(ant, direction);
                         orderedAnts.add(ant);
-                        log("Sent ant for random walk: " + ant + "  to " + field.getDestination(ant, direction));
+                        log_err("Sent ant for random walk: " + ant + "  to " + field.getDestination(ant, direction));
                     }
                 }
             }
@@ -370,6 +379,16 @@ public class CustomBot extends AbstractHiveMind {
         for(Cell c : currentSeen) {
             lastSeen.put(c, field.getTurnNumber());
         }
+    }
+
+    private void log_err(String s) {
+        if (LOGGING_ENABLED)
+            System.err.println(s);
+    }
+
+    private void log_out(String s) {
+        if (LOGGING_VIS_ENABLED)
+            System.out.println(s);
     }
 
 

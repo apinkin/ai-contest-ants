@@ -488,11 +488,14 @@ CanvasElementAntsMap.prototype.checkState = function() {
 	var i, k, kf, p_i, p_k, dx, dy, rows, cols, ar, owner;
 	var hash = undefined;
 	var timeChanged = this.time !== this.state.time;
-	if (timeChanged || this.scale !== this.state.scale || this.label !== this.state.config['label']) {
+	if (timeChanged || this.scale !== this.state.scale
+					|| this.label !== this.state.config['label']
+					|| (this.aistatePlayer !== this.state.aistatePlayer)) {
 		this.invalid = true;
 		this.time = this.state.time;
 		this.scale = this.state.scale;
 		this.label = this.state.config['label'];
+		this.aistatePlayer = this.state.aistatePlayer;
 
 		// per turn calculations
 		if (this.turn !== (this.time | 0)) {
@@ -851,6 +854,56 @@ CanvasElementAntsMap.prototype.draw = function() {
 		this.ctx.restore();
 	}
 
+	// draw ai-state visualization graphics
+	this.setLineWidth(1);
+	this.setLineColor(0, 0, 0, 1);
+	this.setFillColor(255, 255, 255, 0.5);
+	var overlay_history = this.state.replay.meta['replaydata']['overlay_history'];
+	if (this.state.aistatePlayer !== undefined) {
+		var overlays = overlay_history[this.state.aistatePlayer][this.turn];
+		if(overlays != null) {
+			for(i = 0; i < overlays.length; i++) {
+				// process visualizer commands
+				var overlay = overlays[i].split(',');
+				switch (overlay[0]) {
+					case 'setLineWidth':
+						this.setLineWidth(Number(overlay[1]));
+						break;
+					case 'setLineColor':
+						this.setLineColor(Number(overlay[1]), Number(overlay[2]), Number(overlay[3]), Number(overlay[4]));
+						break;
+					case 'setFillColor':
+						this.setFillColor(Number(overlay[1]), Number(overlay[2]), Number(overlay[3]), Number(overlay[4]));
+						break;
+					case 'arrow':
+						this.drawArrow(Number(overlay[1]), Number(overlay[2]), Number(overlay[3]), Number(overlay[4]));
+						break;
+					case 'circle':
+						this.drawCircle(Number(overlay[1]), Number(overlay[2]), Number(overlay[3]), overlay[4].toLowerCase() === 'true');
+						break;
+					case 'line':
+						this.drawLine(Number(overlay[1]), Number(overlay[2]), Number(overlay[3]), Number(overlay[4]));
+						break;
+					case 'rect':
+						this.drawRect(Number(overlay[1]), Number(overlay[2]), Number(overlay[3]), Number(overlay[4]), overlay[5].toLowerCase() === 'true');
+						break;
+					case 'star':
+						this.drawStar(Number(overlay[1]), Number(overlay[2]), Number(overlay[3]), Number(overlay[4]), Number(overlay[5]), overlay[6].toLowerCase() === 'true');
+						break;
+					case 'tile':
+						this.drawTile(Number(overlay[1]), Number(overlay[2]));
+						break;
+					case 'tileBorder':
+						this.drawTileBorder(Number(overlay[1]), Number(overlay[2]), overlay[3]);
+						break;
+					case 'tileSubTile':
+						this.drawTileSubTile(Number(overlay[1]), Number(overlay[2]), overlay[3]);
+						break;
+				}
+			}
+		}
+	}
+
 	// fog
 	if (this.state.fogPlayer !== undefined) {
 		dx = (this.fog.w < colPixels) ? ((colPixels - this.fog.w + 1) >> 1) - this.fog.shiftX : 0;
@@ -858,6 +911,247 @@ CanvasElementAntsMap.prototype.draw = function() {
 		this.drawWrapped(dx, dy, this.fog.w, this.fog.h, this.w, this.h, function(ctx, img, x, y) {
 			ctx.drawImage(img, x, y);
 		}, [ this.ctx, this.fog.canvas, dx, dy ]);
+	}
+};
+
+/**
+ * Overlay set line width
+ */
+CanvasElementAntsMap.prototype.setLineWidth = function(w)
+{
+	this.ctx.lineWidth = w;
+};
+
+/**
+ * Overlay set line colour
+ */
+CanvasElementAntsMap.prototype.setLineColor = function(r, g, b, a)
+{
+	this.ctx.strokeStyle = "rgba(" + r + "," + g + "," + b + "," + a + ")";
+};
+
+/**
+ * Overlay set fill colour
+ */
+CanvasElementAntsMap.prototype.setFillColor = function(r, g, b, a)
+{
+	this.ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + a + ")";
+};
+
+/**
+ * Overlay circle
+ */
+CanvasElementAntsMap.prototype.drawCircle = function(row, col, radius, fill)
+{
+	var halfScale, x, y, radius;
+	
+	halfScale = 0.5 * this.scale;
+	x = (col * this.scale) + halfScale;
+	y = (row * this.scale) + halfScale;
+	radius = radius * this.scale;
+	this.drawWrapped(x - radius, y - radius, 2 * radius, 2 * radius, this.w, this.h, function() {
+		this.ctx.beginPath();
+		this.ctx.arc(x, y, radius, 0, Math.PI * 2, true);
+		fill ? this.ctx.fill() : this.ctx.stroke();
+	 }, []);
+};
+
+/**
+ * Overlay rect
+ */
+CanvasElementAntsMap.prototype.drawRect = function(row, col, width, height, fill)
+{
+	var halfScale, x, y, w, h;
+
+	// Map the points into canvas coordinates
+	halfScale = 0.5 * this.scale;
+	x = (col * this.scale) + halfScale;
+	y = (row * this.scale) + halfScale;
+	w = width * this.scale;
+	h = height * this.scale;
+	this.drawWrapped(x, y, w, h, this.w, this.h, function() {
+		this.ctx.beginPath();
+		this.ctx.rect(x, y, w, h);
+		fill ? this.ctx.fill() : this.ctx.stroke();
+	 }, []);
+};
+
+/**
+ * Overlay line
+ */
+CanvasElementAntsMap.prototype.drawLine = function(row1, col1, row2, col2)
+{
+	var halfScale, x1, x2, y1, y2;
+
+	// Map the points into canvas coordinates
+	halfScale = 0.5 * this.scale;
+	x1 = (col1 * this.scale) + halfScale;
+	y1 = (row1 * this.scale) + halfScale;
+	x2 = (col2 * this.scale) + halfScale;
+	y2 = (row2 * this.scale) + halfScale;
+	// Do wrapping such that lines go the shortest distance
+	if(Math.abs(x2 - x1) > (this.w * 0.5))
+	{
+		(x1 < x2) ? x1 += this.w : x2 += this.w;
+	}
+	if(Math.abs(y2 - y1) > (this.h * 0.5))
+	{
+		(y1 < y2) ? y1 += this.h : y2 += this.h;
+	}
+	this.drawWrapped(Math.min(x1, x2) - 0.01, Math.min(y1, y2) - 0.01, Math.abs(x2 - x1) + 0.02, Math.abs(y2 - y1) + 0.02, this.w, this.h, function() {
+		this.ctx.beginPath();
+		this.ctx.moveTo(x1, y1);
+		this.ctx.lineTo(x2, y2);
+		this.ctx.stroke();
+	 }, []);
+};
+
+/**
+ * Overlay arrow
+ */
+CanvasElementAntsMap.prototype.drawArrow = function(row1, col1, row2, col2)
+{
+	var halfScale, x1, x2, y1, y2, dx, dy, len, hlen, angle, sharp;
+
+	// Map the points into canvas coordinates
+	halfScale = 0.5 * this.scale;
+	x1 = (col1 * this.scale) + halfScale;
+	y1 = (row1 * this.scale) + halfScale;
+	x2 = (col2 * this.scale) + halfScale;
+	y2 = (row2 * this.scale) + halfScale;
+	// Do wrapping such that arrows go the shortest distance
+	if(Math.abs(x2 - x1) > (this.w * 0.5))
+	{
+		(x1 < x2) ? x1 += this.w : x2 += this.w;
+	}
+	if(Math.abs(y2 - y1) > (this.h * 0.5))
+	{
+		(y1 < y2) ? y1 += this.h : y2 += this.h;
+	}
+	// Do calculations for the arrow-head
+	dx = x2 - x1;
+	dy = y2 - y1;
+	len = Math.sqrt((dx * dx) + (dy * dy));
+	hlen = Math.min(2.0 * this.scale, 0.5 * len);
+	angle = Math.atan2(y2 - y1, x2 - x1);
+	sharp = 0.25;
+	this.drawWrapped(Math.min(x1, x2) - 0.01, Math.min(y1, y2) - 0.01, Math.abs(x2 - x1) + 0.02, Math.abs(y2 - y1) + 0.02, this.w, this.h, function() {
+		this.ctx.beginPath();
+		this.ctx.moveTo(x1, y1);
+		this.ctx.lineTo(x2, y2);
+		this.ctx.lineTo(x2 - hlen * Math.cos(angle - sharp), y2 - hlen * Math.sin(angle - sharp));
+		this.ctx.lineTo(x2 - hlen * Math.cos(angle + sharp), y2 - hlen * Math.sin(angle + sharp));
+		this.ctx.lineTo(x2, y2);
+		this.ctx.stroke();
+	}, []);
+};
+
+/**
+ * Overlay tile
+ */
+CanvasElementAntsMap.prototype.drawTile = function(row, col)
+{
+	this.drawRect(row - 0.5, col - 0.5, 1, 1, true);
+};
+
+/**
+ * Overlay star
+ */
+CanvasElementAntsMap.prototype.drawStar = function(row, col, irad, orad, points, fill)
+{
+	var halfScale, x, y, angle, irad, orad;
+	
+	halfScale = 0.5 * this.scale;
+	x = (col * this.scale) + halfScale;
+	y = (row * this.scale) + halfScale;
+	irad *= this.scale;
+	orad *= this.scale;
+	this.drawWrapped(x - orad, y - orad, 2 * orad, 2 * orad, this.w, this.h, function() {
+		this.ctx.beginPath();
+		this.ctx.moveTo(x + orad, y);
+		angle = 0;
+		for(i = 1; i < (points * 2); i++)
+		{
+			rad = ((i & 0x01) == 1) ? irad : orad;
+			angle += Math.PI / points;
+			this.ctx.lineTo(x + (rad * Math.cos(angle)), y + (rad * Math.sin(angle)));
+		}
+		this.ctx.closePath();
+		fill ? this.ctx.fill() : this.ctx.stroke();
+	}, []);
+};
+
+/**
+ * Overlay tile border
+ */
+CanvasElementAntsMap.prototype.drawTileBorder = function(row, col, pos) {
+	switch(pos) {
+		case 'TL':
+			this.drawLine(row - 0.45, col - 0.45, row - 0.45, col - 0.15);
+			this.drawLine(row - 0.45, col - 0.45, row - 0.15, col - 0.45);
+			break;
+		case 'TM':
+			this.drawLine(row - 0.45, col - 0.15, row - 0.45, col + 0.15);
+			break;
+		case 'TR':
+			this.drawLine(row - 0.45, col + 0.45, row - 0.45, col + 0.15);
+			this.drawLine(row - 0.45, col + 0.45, row - 0.15, col + 0.45);
+			break;
+		case 'ML':
+			this.drawLine(row - 0.15, col - 0.45, row + 0.15, col - 0.45);
+			break;
+		case 'MM':
+			this.drawRect(row - 0.45, col - 0.45, 0.9, 0.9, false);
+			break;
+		case 'MR':
+			this.drawLine(row - 0.15, col + 0.45, row + 0.15, col + 0.45);
+			break;
+		case 'BL':
+			this.drawLine(row + 0.45, col - 0.45, row + 0.45, col - 0.15);
+			this.drawLine(row + 0.45, col - 0.45, row + 0.15, col - 0.45);
+			break;
+		case 'BM':
+			this.drawLine(row + 0.45, col - 0.15, row + 0.45, col + 0.15);
+			break;
+		case 'BR':
+			this.drawLine(row + 0.45, col + 0.45, row + 0.45, col + 0.15);
+			this.drawLine(row + 0.45, col + 0.45, row + 0.15, col + 0.45);
+			break;
+	}
+};
+
+/**
+ * Overlay tile sub-tile
+ */
+CanvasElementAntsMap.prototype.drawTileSubTile = function(row, col, pos) {
+	switch(pos) {
+		case 'TL':
+			this.drawRect(row - 0.45, col - 0.45, 0.3, 0.3, true);
+			break;
+		case 'TM':
+			this.drawRect(row - 0.45, col - 0.15, 0.3, 0.3, true);
+			break;
+		case 'TR':
+			this.drawRect(row - 0.45, col + 0.15, 0.3, 0.3, true);
+			break;
+		case 'ML':
+			this.drawRect(row - 0.15, col - 0.45, 0.3, 0.3, true);
+			break;
+		case 'MM':
+			this.drawRect(row - 0.15, col - 0.15, 0.3, 0.3, true);
+			break;
+		case 'MR':
+			this.drawRect(row - 0.15, col + 0.15, 0.3, 0.3, true);
+			break;
+		case 'BL':
+			this.drawRect(row + 0.15, col - 0.45, 0.3, 0.3, true);
+			break;
+		case 'BM':
+			this.drawRect(row + 0.15, col - 0.15, 0.3, 0.3, true);
+			break;
+		case 'BR':
+			this.drawRect(row + 0.15, col + 0.15, 0.3, 0.3, true);
+			break;
 	}
 };
 

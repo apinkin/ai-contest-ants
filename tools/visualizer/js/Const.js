@@ -20,7 +20,7 @@ INT_TO_HEX = new Array(256);
  * 
  * @const
  */
-var LEFT_PANEL_W = 40;
+var LEFT_PANEL_W = 80;
 /**
  * width of right side panel
  * 
@@ -113,3 +113,4 @@ ZOOM_SCALE = 20;
  * @const
  */
 FONT = 'bold 19px Arial,Sans';
+FONT_HEIGHT = 19;

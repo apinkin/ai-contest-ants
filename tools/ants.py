@@ -20,7 +20,7 @@ WATER = -4
 UNSEEN = -5
 
 PLAYER_ANT = 'abcdefghij'
-HILL_ANT = string = 'ABCDEFGHI'
+HILL_ANT = string = 'ABCDEFGHIJ'
 PLAYER_HILL = string = '0123456789'
 MAP_OBJECT = '?%*.!'
 MAP_RENDER = PLAYER_ANT + HILL_ANT + PLAYER_HILL + MAP_OBJECT
@@ -100,6 +100,11 @@ class Ants(Game):
         self.hive_food = [0]*self.num_players # food waiting to spawn for player
         self.hive_history = [[0] for _ in range(self.num_players)]
 
+        # overlay history for each player at each turn
+        self.overlay_history = [[] for _ in range(self.num_players)]
+        # map-info history for each player at each turn
+        self.mapinfo_history = [[] for _ in range(self.num_players)]
+
         # used to cutoff games early
         self.cutoff = None
         self.cutoff_bot = LAND # Can be ant owner, FOOD or LAND
@@ -174,7 +179,7 @@ class Ants(Game):
 
         # the engine may kill players before the game starts and this is needed to prevent errors
         self.orders = [[] for i in range(self.num_players)]
-        
+
 
     def distance(self, a_loc, b_loc):
         """ Returns distance between x and y squared """
@@ -448,6 +453,9 @@ class Ants(Game):
 
         # next list all transient objects
         for update in updates:
+            if update[0] == 'v': continue # ignore overlay commands
+            if update[0] == 'i': continue # ignore info commands
+
             ilk, row, col = update[0:3]
 
             # only include updates to squares which are visible
@@ -498,6 +506,12 @@ class Ants(Game):
             for ant in self.killed_ants
         ))
 
+        for player in range(self.num_players):
+            turns = self.overlay_history[player]
+            if len(turns) >= self.turn and self.turn > 0:
+                for command in turns[self.turn -1]:
+                    changes.append(['v', player, command])
+
         return changes
 
     def get_map_output(self, player=None):
@@ -525,7 +539,81 @@ class Ants(Game):
                 ants.append(self.current_ants[n_loc])
         return ants
 
-    def parse_orders(self, player, lines):
+    def filter_bot_output(self, player, lines):
+        """ Filter all output from the given player
+
+            Removes comments and blank lines and filters all
+            valid commands into separate groups.
+        """
+        invalid = []
+        orders = []
+        overlays = []
+        mapinfos = []
+
+        for line in lines:
+            line = line.strip()
+            # ignore blank lines and comments
+            if not line or line[0] == '#':
+                continue
+            # ensure all lines are single-character commands
+            if not line[1] == ' ':
+                invalid.append((line, 'unknown command'))
+
+            # get command character in lowercase
+            command = line[0].lower()
+            # put the different types of command into different arrays
+            if command == 'o':
+                orders.append(line.lower())
+            elif command == 'v':
+                overlays.append(line)
+            elif command == 'i':
+                mapinfos.append(line)
+            else:
+                invalid.append((line, 'unknown command'))
+
+        return invalid, orders, overlays, mapinfos
+
+    def parse_mapinfos(self, player, lines):
+        """ Parse map-info commands from the given player
+
+            Map info commands start with 'i ' then the next two words
+            are the row and column. These are concatenated into a
+            dictionary key of the form <row>x<col>, the rest is stored
+            in the dictionary as the map-info string for that key.
+            If the key already exists, the string is appended to the
+            existing string separated by a newline character.
+        """
+        mapinfos = {}
+
+        for line in lines:
+            # Get the key and text params
+            params = line[2:].split(' ', 2)
+            ikey = params[0] + 'x' + params[1]
+            itext = params[2]
+            # add or append the text to the info text in the dictionary
+            if ikey in mapinfos:
+                mapinfos[ikey] = mapinfos[ikey] + '\\\\n' + itext
+            else:
+                mapinfos[ikey] = itext
+
+        return mapinfos
+
+    def parse_overlays(self, player, lines):
+        """ Parse visualizer overlay commands from the given player
+
+            Visualizer overlay commands start with 'v ' then the rest
+            is just passed straight through to the javascript
+        """
+        overlays = []
+
+        for line in lines:
+            # Append the command
+            vcmd = line[2:].replace(' ', ',')
+            overlays.append(vcmd)
+
+        return overlays
+
+    def parse_orders(self, player, invalid, lines):
         """ Parse orders from the given player
 
             Orders must be of the form: o row col direction
@@ -535,14 +623,8 @@ class Ants(Game):
         orders = []
         valid = []
         ignored = []
-        invalid = []
 
         for line in lines:
-            line = line.strip().lower()
-            # ignore blank lines and comments
-            if not line or line[0] == '#':
-                continue
-
             data = line.split()
 
             # validate data format
@@ -768,7 +850,7 @@ class Ants(Game):
         self.all_ants.append(ant)
         self.current_ants[loc] = ant
         return ant
-    
+
     def kill_ant(self, ant, ignore_error=False):
         """ Kill the ant at the given location
 
@@ -1426,7 +1508,7 @@ class Ants(Game):
                 self.score[player] += self.bonus[player]
 
         self.calc_significant_turns()
-        
+
         # check if a rule change lengthens games needlessly
         if self.cutoff is None:
             self.cutoff = 'turn limit reached'
@@ -1575,9 +1657,19 @@ class Ants(Game):
 
     def do_moves(self, player, moves):
         """ Called by engine to give latest player orders """
-        orders, valid, ignored, invalid = self.parse_orders(player, moves)
+        # filter output into different arrays
+        invalid, orders, overlays, mapinfos = self.filter_bot_output(player, moves)
+        # parse the array of orders
+        orders, valid, ignored, invalid = self.parse_orders(player, invalid, orders)
         orders, valid, ignored, invalid = self.validate_orders(player, orders, valid, ignored, invalid)
         self.orders[player] = orders
+        # parse the array of visualizer commands
+        overlays = self.parse_overlays(player, overlays)
+        self.overlay_history[player].append(overlays)
+        # parse the array of map info commands
+        mapinfos = self.parse_mapinfos(player, mapinfos)
+        self.mapinfo_history[player].append(mapinfos)
+        # return valid orders, ignore messages, and error messages
         return valid, ['%s # %s' % ignore for ignore in ignored], ['%s # %s' % error for error in invalid]
 
     def get_scores(self, player=None):
@@ -1724,6 +1816,11 @@ class Ants(Game):
         replay['winning_turn'] = self.winning_turn
         replay['ranking_turn'] = self.ranking_turn
         replay['cutoff'] =  self.cutoff
+
+        # overlay history
+        replay['overlay_history'] = self.overlay_history
+        # map-info history
+        replay['mapinfo_history'] = self.mapinfo_history
 
         return replay
 

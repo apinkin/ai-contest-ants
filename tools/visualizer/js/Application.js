@@ -154,6 +154,7 @@ Visualizer = function(container, options, w, h, configOverrides) {
 			this.imgMgr.add('playback.png');
 			this.imgMgr.add('fog.png');
 			this.imgMgr.add('toolbar.png');
+			this.imgMgr.add('aistate.png');
 			/** @private */
 			this.btnMgr = new ButtonManager(null);
 			/** @private */
@@ -700,8 +701,8 @@ Visualizer.prototype.tryStart = function() {
 						bg.addButton(8, dlg, 'regenerates bot input from this replay');
 					}
 				}
-				// generate fog images
 				if (this.state.replay.hasDuration) {
+					// generate fog images
 					this.imgMgr.colorize(3, colors);
 					bg = this.btnMgr.addImageGroup('fog', this.imgMgr.patterns[3],
 							ImageButtonGroup.VERTICAL, ButtonGroup.MODE_RADIO, 2);
@@ -710,6 +711,19 @@ Visualizer.prototype.tryStart = function() {
 						var hint = 'show/clear fog of war for ';
 						hint += vis.state.replay.meta['playernames'][fog];
 						return bg.addButton(fog, dlg, hint);
+					};
+					for (i = 0; i < colors.length; i++) {
+						buttonAdder(this.state.order[i]);
+					}
+					// generate ai-state button images
+					this.imgMgr.colorize(5, colors);
+					bg = this.btnMgr.addImageGroup('aistate', this.imgMgr.patterns[5],
+							ImageButtonGroup.VERTICAL, ButtonGroup.MODE_RADIO, 2);
+					var buttonAdder = function(order) {
+						var dlg = new Delegate(vis, vis.showAIState);
+						var hint = 'show/clear AI state visualization for ';
+						hint += vis.state.replay.meta['playernames'][order];
+						return bg.addButton(order, dlg, hint);
 					};
 					for (i = 0; i < colors.length; i++) {
 						buttonAdder(this.state.order[i]);
@@ -1146,6 +1160,9 @@ Visualizer.prototype.resize = function(forced) {
 				bg.y = this.shiftedMap.y + this.shiftedMap.h;
 				bg = this.btnMgr.groups['fog'];
 				bg.y = this.shiftedMap.y + 8;
+				bg = this.btnMgr.groups['aistate'];
+				bg.x = LEFT_PANEL_W / 2;
+				bg.y = this.shiftedMap.y + 8;
 			} else {
 				this.shiftedMap.x = 0;
 				this.shiftedMap.y = y;
@@ -1157,6 +1174,8 @@ Visualizer.prototype.resize = function(forced) {
 			// set button group extents
 			if (this.state.replay.hasDuration) {
 				bg = this.btnMgr.groups['fog'];
+				bg.h = newSize.h - this.shiftedMap.y - 8;
+				bg = this.btnMgr.groups['aistate'];
 				bg.h = newSize.h - this.shiftedMap.y - 8;
 				bg = this.btnMgr.groups['playback'];
 				bg.w = this.shiftedMap.x + this.shiftedMap.w - bg.x;
@@ -1188,6 +1207,18 @@ Visualizer.prototype.resize = function(forced) {
  */
 Visualizer.prototype.showFog = function(idx) {
 	this.state.fogPlayer = idx;
+	this.director.draw();
+};
+
+/**
+ * Enables or disables AI-state display.
+ * 
+ * @private
+ * @param idx
+ *        {Number} The index of the player for which AI-state is to be displayed or undefined.
+ */
+Visualizer.prototype.showAIState = function(idx) {
+	this.state.aistatePlayer = idx;
 	this.director.draw();
 };
 
@@ -1279,17 +1310,27 @@ Visualizer.prototype.draw = function() {
 		ctx.font = FONT;
 		ctx.textAlign = 'left';
 		ctx.textBaseline = 'middle';
-		if (ctx.measureText(hint).width > loc.w) {
-			do {
-				hint = hint.substr(0, hint.length - 1);
-			} while (hint && ctx.measureText(hint + '...').width > loc.w);
-			if (hint) hint += '...';
+		// split the hint on newline characters
+		var lines = hint.split('\n');
+		// calculate the initial text rectangle
+		var textRect = {x : loc.x, y : loc.y, w : 0, h : FONT_HEIGHT + 3};
+		// draw each line of text in the hint
+		for(var i = 0; i < lines.length; i++) {
+			hint = lines[i];
+			if (ctx.measureText(hint).width > loc.w) {
+				do {
+					hint = hint.substr(0, hint.length - 1);
+				} while (hint && ctx.measureText(hint + '...').width > loc.w);
+				if (hint) hint += '...';
+			}
+			textRect.w = ctx.measureText(hint).width;
+			ctx.fillStyle = 'rgba(0,0,0,0.3)';
+			ctx.fillRect(textRect.x, textRect.y, textRect.w, textRect.h);
+			ctx.fillStyle = '#fff';
+			ctx.fillText(hint, textRect.x, textRect.y + ((textRect.h - 2) * 0.5));
+			// increment the y-position for the next line
+			textRect.y += textRect.h;
 		}
-		w = ctx.measureText(hint).width;
-		ctx.fillStyle = 'rgba(0,0,0,0.3)';
-		ctx.fillRect(loc.x, loc.y, w, 22);
-		ctx.fillStyle = '#fff';
-		ctx.fillText(hint, loc.x, loc.y + 10);
 	}
 	if (this.state.isStreaming) {
 		// we were able to draw a frame, the engine may send us the next turn
@@ -1330,7 +1371,17 @@ Visualizer.prototype.mouseMoved = function(mx, my) {
 	if (this.state.options['interactive']) {
 		if ((this.state.mouseOverVis = this.map.contains(this.mouseX, this.mouseY)
 				&& this.shiftedMap.contains(this.mouseX, this.mouseY))) {
+			// set the hint to show the mouse row and column
 			this.hint = 'row ' + this.state.mouseRow + ' | col ' + this.state.mouseCol;
+			// get the additional map info for the row/column
+			var mapInfo = this.state.replay.meta['replaydata']['mapinfo_history'];
+			if(mapInfo && (this.state.aistatePlayer !== undefined)) {
+				var rowxcol = '' + this.state.mouseRow + 'x' + this.state.mouseCol;
+				var turnInfo = mapInfo[this.state.aistatePlayer][(this.state.time | 0)];
+				if(turnInfo && turnInfo[rowxcol]) {
+					this.hint = this.hint + '\n' + turnInfo[rowxcol];
+				}
+			}
 		}
 		if (this.mouseDown === 1) {
 			tick = this.mouseX - this.scores.graph.x;
@@ -1637,6 +1688,8 @@ Options.toBool = function(value) {
  * @property {Replay} replay The currently loaded replay.
  * @property {Number} fogPlayer The array index of the player for which fog of war is enabled. It is
  *           undefined if fog of war is disabled.
+ * @property {Number} aistatePlayer The array index of the player for which AI-state visualization is
+ *           enabled. It is undefined if AI-state visualization is disabled.
  * @property {Number} time The current visualizer time or position in turns, starting with 0 at the
  *           start of 'turn 1'.
  * @property {Number} shiftX X coordinate displacement of the map.
@@ -1668,6 +1721,7 @@ State.prototype.cleanUp = function() {
 	this.order = undefined;
 	this.replay = null;
 	this.fogPlayer = undefined;
+	this.aistatePlayer = undefined;
 	this.time = 0;
 	this.shiftX = 0;
 	this.shiftY = 0;

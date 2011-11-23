@@ -153,7 +153,8 @@ function Replay(replay, debug, highlightUser) {
 			'map' : {},
 			'ants' : [],
 			'food' : [],
-			'hills' : []
+			'hills' : [],
+			'overlay_history': []
 		};
 		this.duration = -1;
 		this.hasDuration = true;
