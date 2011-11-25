@@ -13,7 +13,7 @@ public class CustomBot extends AbstractHiveMind {
 
     private static boolean LOGGING_VIS_ENABLED = true;
     private static boolean LOGGING_VIS_MAIN_INFLUENCE = false;
-    private static boolean LOGGING_VIS_ANT_INFLUENCE = true;
+    private static boolean LOGGING_VIS_ANT_INFLUENCE = false;
 
     private static int INFLUENCE_MAX = Integer.MAX_VALUE;
     private static int INFLUENCE_FOOD = INFLUENCE_MAX;
@@ -111,34 +111,46 @@ public class CustomBot extends AbstractHiveMind {
         }
 
         // calculate my/enemy influence map
-        int influenceRadius = (int) Math.sqrt(info.attackRadiusSquared)+2;
+        int influenceRadius = (int) Math.ceil(Math.sqrt(info.attackRadiusSquared))+1;
         int influenceRadiusSquared = influenceRadius*influenceRadius;
-        int[][] diffMyEnemy = new int[info.rows][info.cols];
-        boolean [][] diffMyEnemyFlag = new boolean[info.rows][info.cols];
-        calcAntsInfluence(field, influenceRadius, influenceRadiusSquared, diffMyEnemy, diffMyEnemyFlag, field.getMyAntPositions(), 1);
-        calcAntsInfluence(field, influenceRadius, influenceRadiusSquared, diffMyEnemy, diffMyEnemyFlag, field.getEnemyAnts(), -1);
+
+        int[][] diffMy = new int[info.rows][info.cols];
+        boolean [][] diffMyFlag = new boolean[info.rows][info.cols];
+        calcAntsInfluence(field, influenceRadius, influenceRadiusSquared, diffMy, diffMyFlag, field.getMyAntPositions(), 1);
+
+        int[][] diffEnemy = new int[info.rows][info.cols];
+        boolean [][] diffEnemyFlag = new boolean[info.rows][info.cols];
+        calcAntsInfluence(field, influenceRadius, influenceRadiusSquared, diffEnemy, diffEnemyFlag, field.getEnemyAnts(), -1);
+
         // calculate min and max ant influence
         int minAntInfluence = Integer.MAX_VALUE;
         int maxAntInfluence = Integer.MIN_VALUE;
         for(int row = 0; row < info.rows; row ++) {
             for(int col = 0; col < info.cols; col ++) {
-                minAntInfluence = Math.min(minAntInfluence, diffMyEnemy[row][col] );
-                maxAntInfluence = Math.max(maxAntInfluence, diffMyEnemy[row][col] );
+                minAntInfluence = Math.min(minAntInfluence, diffEnemy[row][col] );
+                maxAntInfluence = Math.max(maxAntInfluence, diffMy[row][col] );
             }
         }
-        int antInfluenceRange = maxAntInfluence-minAntInfluence;
 
         // visualize ant influence map
         if (LOGGING_VIS_ENABLED && LOGGING_VIS_ANT_INFLUENCE)
             for(int row = 0; row < info.rows; row ++) {
                 for(int col = 0; col < info.cols; col ++) {
-                    if (!diffMyEnemyFlag[row][col])
-                        continue;
-                    String color = (diffMyEnemy[row][col] > 0) ? ANT_COLOR_MY : ANT_COLOR_ENEMY;
-                    double influenceRange = (diffMyEnemy[row][col] > 0) ? maxAntInfluence : minAntInfluence;
-                    log_out("v setFillColor " + color + " " + diffMyEnemy[row][col]/ influenceRange);
-                    log_out("v tile " + row + " " + col);
-                    log_out("i " + row + " " + col + " " + diffMyEnemy[row][col]/ influenceRange);
+                    if (diffMyFlag[row][col]) {
+                        String color = ANT_COLOR_MY;
+                        double influenceRange = maxAntInfluence;
+                        log_out("v setFillColor " + color + " " + diffMy[row][col]/ influenceRange);
+                        log_out("v tile " + row + " " + col);
+                        log_out("i " + row + " " + col + " my ant influence" + diffMy[row][col]);
+                        log_out("i " + row + " " + col + " enemy ant influence" + diffEnemy[row][col]);
+                    }
+                    if (diffEnemyFlag[row][col]) {
+                        //String color = ANT_COLOR_ENEMY;
+                        //double influenceRange = minAntInfluence;
+                        //log_out("v setFillColor " + color + " " + diffEnemy[row][col]/ influenceRange);
+                        //log_out("v tile " + row + " " + col);
+                        //log_out("i " + row + " " + col + " enemy ant influence" + diffEnemy[row][col]);
+                    }
                 }
             }
 
@@ -154,7 +166,7 @@ public class CustomBot extends AbstractHiveMind {
 
         // now make decisions where free ants can go
         for (Cell antLoc : field.getMyAntPositions()) {
-            Direction direction = getDirectionHighestDiff(field, antLoc, diffExp);
+            Direction direction = getDirectionHighestDiff(field, antLoc, diffExp, diffMy, diffEnemy);
             if (direction != null) {
                 issueOrder(antLoc, direction);
                 log_err("Sent ant: " + antLoc + "  to " + direction);
@@ -192,16 +204,16 @@ public class CustomBot extends AbstractHiveMind {
         return (min_distance <= info.viewRadiusSquared);
     }
 
-    private Direction getDirectionHighestDiff(IField field, Cell cell, double[][] diffExp) {
+    private Direction getDirectionHighestDiff(IField field, Cell cell, double[][] diffExp, int[][] diffMy, int[][] diffEnemy) {
         Cell north = field.getDestination(cell, Direction.NORTH);
         Cell south = field.getDestination(cell, Direction.SOUTH);
         Cell west = field.getDestination(cell, Direction.WEST);
         Cell east = field.getDestination(cell, Direction.EAST);
 
-        double diffNorth = field.get(north).type.isPassable() ? diffExp[north.row][north.col] : 0;
-        double diffSouth = field.get(south).type.isPassable() ? diffExp[south.row][south.col] : 0;
-        double diffWest = field.get(west).type.isPassable() ? diffExp[west.row][west.col] : 0;
-        double diffEast = field.get(east).type.isPassable() ? diffExp[east.row][east.col] : 0;
+        double diffNorth = field.get(north).type.isPassable() && (diffMy[north.row][north.col] > -diffEnemy[north.row][north.col]) ? diffExp[north.row][north.col] : 0;
+        double diffSouth = field.get(south).type.isPassable() && (diffMy[south.row][south.col] > -diffEnemy[south.row][south.col]) ? diffExp[south.row][south.col] : 0;
+        double diffWest = field.get(west).type.isPassable() && (diffMy[west.row][west.col] > -diffEnemy[west.row][west.col]) ? diffExp[west.row][west.col] : 0;
+        double diffEast = field.get(east).type.isPassable() && (diffMy[east.row][east.col] > -diffEnemy[east.row][east.col]) ? diffExp[east.row][east.col] : 0;
 
         double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
 
