@@ -1,4 +1,5 @@
 #!/bin/bash
+cp ../build/MyBot.jar ../archive/$1.jar
 pushd ../build
 mkdir $1
 pushd $1

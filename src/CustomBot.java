@@ -11,7 +11,7 @@ public class CustomBot extends AbstractHiveMind {
     
     private static boolean LOGGING_ENABLED = false;
 
-    private static boolean LOGGING_VIS_ENABLED = true;
+    private static boolean LOGGING_VIS_ENABLED = false;
     private static boolean LOGGING_VIS_MAIN_INFLUENCE = false;
     private static boolean LOGGING_VIS_ANT_INFLUENCE = false;
 
@@ -20,6 +20,7 @@ public class CustomBot extends AbstractHiveMind {
     private static int INFLUENCE_ENEMY_HILL = INFLUENCE_MAX;
     private static int INFLUENCE_UNEXPLORED = INFLUENCE_MAX / 10;
     private static int INFLUENCE_MY_HILL_DEFEND = INFLUENCE_MAX;
+    private static int INFLUENCE_MY_ANT = 0;
 
     private static String ANT_COLOR_ENEMY = "255 0 0";
     private static String ANT_COLOR_MY = "0 255 0";
@@ -71,6 +72,10 @@ public class CustomBot extends AbstractHiveMind {
                 }
                 else if (o.type.equals(Cell.Type.ANT) && o.isEnemys() && isCloseToMyHill(field, myHills, cell)) {
                     diffExp[row][col] = INFLUENCE_MY_HILL_DEFEND;
+                    diffusedExp[row][col] = true;
+                }
+                else if (o.type.equals(Cell.Type.ANT) && o.isMine()) {
+                    diffExp[row][col] = INFLUENCE_MY_ANT;
                     diffusedExp[row][col] = true;
                 }
                 else if (o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.HILL) && o.isMine())) {
@@ -210,10 +215,10 @@ public class CustomBot extends AbstractHiveMind {
         Cell west = field.getDestination(cell, Direction.WEST);
         Cell east = field.getDestination(cell, Direction.EAST);
 
-        double diffNorth = field.get(north).type.isPassable() && (diffMy[north.row][north.col] > -diffEnemy[north.row][north.col]) ? diffExp[north.row][north.col] : 0;
-        double diffSouth = field.get(south).type.isPassable() && (diffMy[south.row][south.col] > -diffEnemy[south.row][south.col]) ? diffExp[south.row][south.col] : 0;
-        double diffWest = field.get(west).type.isPassable() && (diffMy[west.row][west.col] > -diffEnemy[west.row][west.col]) ? diffExp[west.row][west.col] : 0;
-        double diffEast = field.get(east).type.isPassable() && (diffMy[east.row][east.col] > -diffEnemy[east.row][east.col]) ? diffExp[east.row][east.col] : 0;
+        double diffNorth = field.get(north).type.isPassable() /* && (diffMy[north.row][north.col] > -diffEnemy[north.row][north.col]) */ ? diffExp[north.row][north.col] : 0;
+        double diffSouth = field.get(south).type.isPassable() /* && (diffMy[south.row][south.col] > -diffEnemy[south.row][south.col]) */ ? diffExp[south.row][south.col] : 0;
+        double diffWest = field.get(west).type.isPassable() /* && (diffMy[west.row][west.col] > -diffEnemy[west.row][west.col]) */ ? diffExp[west.row][west.col] : 0;
+        double diffEast = field.get(east).type.isPassable() /* && (diffMy[east.row][east.col] > -diffEnemy[east.row][east.col]) */ ? diffExp[east.row][east.col] : 0;
 
         double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
 
