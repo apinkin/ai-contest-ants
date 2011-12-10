@@ -74,10 +74,10 @@ public class CustomBot extends AbstractHiveMind {
                     diffExp[row][col] = INFLUENCE_MY_HILL_DEFEND;
                     diffusedExp[row][col] = true;
                 }
-//                else if (o.type.equals(Cell.Type.ANT) && o.isMine()) {
-//                    diffExp[row][col] = INFLUENCE_MY_ANT;
-//                    diffusedExp[row][col] = true;
-//                }
+                else if (o.type.equals(Cell.Type.ANT) && o.isMine()) {
+                    diffExp[row][col] = INFLUENCE_MY_ANT;
+                    diffusedExp[row][col] = true;
+                }
                 else if (o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.HILL) && o.isMine())) {
                     diffExp[row][col] = 0;
                     diffusedExp[row][col] = true;
@@ -104,13 +104,26 @@ public class CustomBot extends AbstractHiveMind {
                 for(int col = 0; col < info.cols; col ++) {
                     if (diffusedExp[row][col])
                         continue;
-                    double up = diffExp[get_dest(row, -1, info.rows)][col];
-                    double down = diffExp[get_dest(row, 1, info.rows)][col];
-                    double left = diffExp[row][get_dest(col, -1, info.cols)];
-                    double right = diffExp[row][get_dest(col, 1, info.cols)];
-
                     double divider = 4.0;
-                    diffExp[row][col] = up/divider + down/divider + left/divider + right/divider;
+
+                    int up_row = get_dest(row, -1, info.rows);
+                    double up = diffExp[up_row][col];
+                    if (isNonConductive(field, up_row, col)) divider-=1.0;
+
+                    int down_row = get_dest(row, 1, info.rows);
+                    double down = diffExp[down_row][col];
+                    if (isNonConductive(field, down_row, col)) divider-=1.0;
+
+                    int left_col = get_dest(col, -1, info.cols);
+                    double left = diffExp[row][left_col];
+                    if (isNonConductive(field, row, left_col)) divider-=1.0;
+
+                    int right_col = get_dest(col, 1, info.cols);
+                    double right = diffExp[row][right_col];
+                    if (isNonConductive(field, row, right_col)) divider-=1.0;
+
+                    if (divider > 0.01)
+                        diffExp[row][col] = up/divider + down/divider + left/divider + right/divider;
                 }
             }
         }
@@ -179,6 +192,11 @@ public class CustomBot extends AbstractHiveMind {
                 log_err("Ant stuck: " + antLoc);
             }
         }
+    }
+
+    private boolean isNonConductive(IField field, int row, int col) {
+        Owned o = field.get(row, col);
+        return o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.ANT) && o.isMine());
     }
 
     private Set<Cell> getNeighbours(IField field, Cell cell) {
