@@ -74,10 +74,10 @@ public class CustomBot extends AbstractHiveMind {
                     diffExp[row][col] = INFLUENCE_MY_HILL_DEFEND;
                     diffusedExp[row][col] = true;
                 }
-                else if (o.type.equals(Cell.Type.ANT) && o.isMine()) {
-                    diffExp[row][col] = INFLUENCE_MY_ANT;
-                    diffusedExp[row][col] = true;
-                }
+//                else if (o.type.equals(Cell.Type.ANT) && o.isMine()) {
+//                    diffExp[row][col] = INFLUENCE_MY_ANT;
+//                    diffusedExp[row][col] = true;
+//                }
                 else if (o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.HILL) && o.isMine())) {
                     diffExp[row][col] = 0;
                     diffusedExp[row][col] = true;
@@ -116,16 +116,15 @@ public class CustomBot extends AbstractHiveMind {
         }
 
         // calculate my/enemy influence map
-        int influenceRadius = (int) Math.ceil(Math.sqrt(info.attackRadiusSquared))+1;
-        int influenceRadiusSquared = influenceRadius*influenceRadius;
+        int influenceRadius = (int) Math.ceil(Math.sqrt(info.attackRadiusSquared));
 
         int[][] diffMy = new int[info.rows][info.cols];
         boolean [][] diffMyFlag = new boolean[info.rows][info.cols];
-        calcAntsInfluence(field, influenceRadius, influenceRadiusSquared, diffMy, diffMyFlag, field.getMyAntPositions(), 1);
+        calcAntsInfluence(field, influenceRadius, info.attackRadiusSquared, diffMy, diffMyFlag, field.getMyAntPositions(), 1);
 
         int[][] diffEnemy = new int[info.rows][info.cols];
         boolean [][] diffEnemyFlag = new boolean[info.rows][info.cols];
-        calcAntsInfluence(field, influenceRadius, influenceRadiusSquared, diffEnemy, diffEnemyFlag, field.getEnemyAnts(), -1);
+        calcAntsInfluence(field, influenceRadius, info.attackRadiusSquared, diffEnemy, diffEnemyFlag, field.getEnemyAnts(), -1);
 
         // calculate min and max ant influence
         int minAntInfluence = Integer.MAX_VALUE;
@@ -182,19 +181,36 @@ public class CustomBot extends AbstractHiveMind {
         }
     }
 
+    private Set<Cell> getNeighbours(IField field, Cell cell) {
+        Set<Cell> r = new HashSet<Cell>();
+        Cell north = field.getDestination(cell, Direction.NORTH); Owned o = field.get(north.row, north.col); if (!o.type.equals(Cell.Type.WATER) && !o.type.equals(Cell.Type.HILL)) r.add(north);
+        Cell south = field.getDestination(cell, Direction.SOUTH); o = field.get(south.row, south.col); if (!o.type.equals(Cell.Type.WATER) && !o.type.equals(Cell.Type.HILL)) r.add(south);
+        Cell west = field.getDestination(cell, Direction.WEST); o = field.get(west.row, west.col); if (!o.type.equals(Cell.Type.WATER) && !o.type.equals(Cell.Type.HILL)) r.add(west);
+        Cell east = field.getDestination(cell, Direction.EAST); o = field.get(east.row, east.col); if (!o.type.equals(Cell.Type.WATER) && !o.type.equals(Cell.Type.HILL)) r.add(east);
+        return r;
+    }
     private void calcAntsInfluence(IField field, int influenceRadius, int influenceRadiusSquared, int[][] diffMyEnemy, boolean [][] diffMyEnemyFlag, Set<Cell> myAnts, int value) {
         for (Cell myAnt : myAnts) {
             for (int row = -influenceRadius; row<=influenceRadius; row++) {
                 for (int col = -influenceRadius; col<=influenceRadius; col++) {
                     int crow = get_dest(myAnt.row, row, info.rows);
                     int ccol = get_dest(myAnt.col, col, info.cols);
-                    if (field.getDistance(myAnt, Cell.of(crow, ccol)) <= influenceRadiusSquared) {
+                    int minDistSquared = getMinDist(field, getNeighbours(field, myAnt), Cell.of(crow, ccol));
+                    if (minDistSquared <= influenceRadiusSquared) {
                         diffMyEnemy[crow][ccol] += value;
                         diffMyEnemyFlag[crow][ccol] = true;
                     }
                 }
             }
         }
+    }
+
+    private int getMinDist(IField field, Set<Cell> neighbours, Cell cell) {
+        int r = Integer.MAX_VALUE;
+        for (Cell n : neighbours) {
+            r = Math.min(r, field.getDistance(n, cell));
+        }
+        return r;
     }
 
     private boolean isCloseToMyHill(IField field, Set<Cell> myHills, Cell cell) {
@@ -215,10 +231,10 @@ public class CustomBot extends AbstractHiveMind {
         Cell west = field.getDestination(cell, Direction.WEST);
         Cell east = field.getDestination(cell, Direction.EAST);
 
-        double diffNorth = field.get(north).type.isPassable() /* && (diffMy[north.row][north.col] > -diffEnemy[north.row][north.col]) */ ? diffExp[north.row][north.col] : 0;
-        double diffSouth = field.get(south).type.isPassable() /* && (diffMy[south.row][south.col] > -diffEnemy[south.row][south.col]) */ ? diffExp[south.row][south.col] : 0;
-        double diffWest = field.get(west).type.isPassable() /* && (diffMy[west.row][west.col] > -diffEnemy[west.row][west.col]) */ ? diffExp[west.row][west.col] : 0;
-        double diffEast = field.get(east).type.isPassable() /* && (diffMy[east.row][east.col] > -diffEnemy[east.row][east.col]) */ ? diffExp[east.row][east.col] : 0;
+        double diffNorth = field.get(north).type.isPassable()  && (diffMy[north.row][north.col] > -diffEnemy[north.row][north.col])  ? diffExp[north.row][north.col] : 0;
+        double diffSouth = field.get(south).type.isPassable()  && (diffMy[south.row][south.col] > -diffEnemy[south.row][south.col])  ? diffExp[south.row][south.col] : 0;
+        double diffWest = field.get(west).type.isPassable()  && (diffMy[west.row][west.col] > -diffEnemy[west.row][west.col])  ? diffExp[west.row][west.col] : 0;
+        double diffEast = field.get(east).type.isPassable()  && (diffMy[east.row][east.col] > -diffEnemy[east.row][east.col])  ? diffExp[east.row][east.col] : 0;
 
         double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
 
