@@ -196,7 +196,7 @@ public class CustomBot extends AbstractHiveMind {
 
     private boolean isNonConductive(IField field, int row, int col) {
         Owned o = field.get(row, col);
-        return o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.ANT) && o.isMine());
+        return o.type.equals(Cell.Type.WATER);
     }
 
     private Set<Cell> getNeighbours(IField field, Cell cell) {
