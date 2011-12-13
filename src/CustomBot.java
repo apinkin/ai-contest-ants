@@ -26,6 +26,7 @@ public class CustomBot extends AbstractHiveMind {
     private static int INFLUENCE_UNSEEN = INFLUENCE_MAX / 20;
     private static int INFLUENCE_MY_HILL_DEFEND = INFLUENCE_MAX;
     private static int INFLUENCE_MY_ANT = 0;
+    private static double DIFF = 1e-100;
 
     private static String ANT_COLOR_ENEMY = "255 0 0";
     private static String ANT_COLOR_MY = "0 255 0";
@@ -289,21 +290,24 @@ public class CustomBot extends AbstractHiveMind {
 
         double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
 
-        //log_err("Diffusion for " + cell + ":  " + diffNorth + " " + diffEast + " " + diffSouth + " " + diffWest);
-        //System.out.println("i " + cell.row + " " + cell.col + " N: " + diffNorth + "  E: " + diffEast + "  S: " + diffSouth + "   W: " + diffWest );
-        if (maxDiff == 0.0) {
+        //log_out("i " + cell.row + " " + cell.col + " Diffusion north:  " + diffNorth + "  east: " + diffEast + "  south: " + diffSouth + "  west: " + diffWest);
+
+        if (maxDiff <= DIFF) {
             return null;
         }
-        if (diffNorth == maxDiff) {
+        if (Math.abs(diffNorth - maxDiff) <= DIFF) {
             return Direction.NORTH;
         }
-        else if (diffSouth == maxDiff) {
+        if (Math.abs(diffSouth - maxDiff) <= DIFF) {
             return Direction.SOUTH;
         }
-        else if (diffWest == maxDiff) {
+        if (Math.abs(diffWest - maxDiff) <= DIFF) {
             return Direction.WEST;
         }
-        return Direction.EAST;
+        if (Math.abs(diffEast - maxDiff) <= DIFF) {
+            return Direction.EAST;
+        }
+        return null;
     }
 
     private void print(int[][] diffExp) {
