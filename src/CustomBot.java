@@ -8,7 +8,11 @@ import java.util.Set;
 import java.util.TreeSet;
 
 public class CustomBot extends AbstractHiveMind {
-    
+
+    public static enum Status {
+        SAFE, KILL, DIE
+    }
+
     private static boolean LOGGING_ENABLED = false;
 
     private static boolean LOGGING_VIS_ENABLED = false;
@@ -87,10 +91,10 @@ public class CustomBot extends AbstractHiveMind {
                     diffExp[row][col] = INFLUENCE_UNEXPLORED;
                     diffusedExp[row][col] = true;
                 }
-                else if (o.explored && !field.isSeen(cell)) {
-                    diffExp[row][col] = INFLUENCE_UNSEEN;
-                    diffusedExp[row][col] = true;
-                }
+//                else if (o.explored && !field.isSeen(cell)) {
+//                    diffExp[row][col] = INFLUENCE_UNSEEN;
+//                    diffusedExp[row][col] = true;
+//                }
                 else {
                     // lastSeen or unexplored
                     //Integer seenTurn = lastSeen.get(cell);
@@ -123,21 +127,88 @@ public class CustomBot extends AbstractHiveMind {
         // calculate my/enemy influence map
         int influenceRadius = (int) Math.ceil(Math.sqrt(info.attackRadiusSquared));
 
-        int[][] diffMy = new int[info.rows][info.cols];
-        boolean [][] diffMyFlag = new boolean[info.rows][info.cols];
-        calcAntsInfluence(field, influenceRadius, info.attackRadiusSquared, diffMy, diffMyFlag, field.getMyAntPositions(), 1);
+        Set<Cell> enemyAnts = field.getEnemyAnts();
+        int enemyPlayers = 0;
+        for (Cell c : enemyAnts) {
+            enemyPlayers = Math.max(enemyPlayers, field.get(c).owner);
+        }
+        int playerCount = enemyPlayers+1;
 
-        int[][] diffEnemy = new int[info.rows][info.cols];
-        boolean [][] diffEnemyFlag = new boolean[info.rows][info.cols];
-        calcAntsInfluence(field, influenceRadius, info.attackRadiusSquared, diffEnemy, diffEnemyFlag, field.getEnemyAnts(), -1);
+        int[][][] playerInfluence = new int[playerCount][info.rows][info.cols];
+        int[][] totalInfluence = new int[info.rows][info.cols];
+        Set<Cell> ants = field.getAnts();
+        for (Cell ant : ants) {
+            for (int row = -influenceRadius; row<=influenceRadius; row++) {
+                for (int col = -influenceRadius; col<=influenceRadius; col++) {
+                    int crow = get_dest(ant.row, row, info.rows);
+                    int ccol = get_dest(ant.col, col, info.cols);
+                    int minDistSquared = getMinDist(field, getNeighbours(field, ant), Cell.of(crow, ccol));
+                    if (minDistSquared <= info.attackRadiusSquared) {
+                        totalInfluence[crow][ccol] += 1;
+                        playerInfluence[field.get(ant).owner][crow][ccol] += 1;
+                    }
+                }
+            }
+        }
 
-        // calculate min and max ant influence
-        int minAntInfluence = Integer.MAX_VALUE;
-        int maxAntInfluence = Integer.MIN_VALUE;
-        for(int row = 0; row < info.rows; row ++) {
-            for(int col = 0; col < info.cols; col ++) {
-                minAntInfluence = Math.min(minAntInfluence, diffEnemy[row][col] );
-                maxAntInfluence = Math.max(maxAntInfluence, diffMy[row][col] );
+        // calculate fighting
+        int[][][] fighting = new int[playerCount][info.rows][info.cols];
+        for(int p = 0; p<playerCount; p++) {
+            for(int row = 0; row < info.rows; row ++) {
+                for(int col = 0; col < info.cols; col ++) {
+                    fighting[p][row][col] = Integer.MAX_VALUE;
+                }
+            }
+        }
+        for(Cell ant : ants) {
+           for(Cell position : getNeighboursIncludingSelf(field, ant)) {
+               int antsFighting = totalInfluence[position.row][position.col] - playerInfluence[field.get(ant).owner][position.row][position.col];
+               // now store this in each tile in the fighting array within the combat zone of that tile if it is less than current value
+               for (int row = -influenceRadius; row<=influenceRadius; row++) {
+                   for (int col = -influenceRadius; col<=influenceRadius; col++) {
+                       int crow = get_dest(position.row, row, info.rows);
+                       int ccol = get_dest(position.col, col, info.cols);
+                       int minDistSquared = field.getDistance(position, Cell.of(crow, ccol));
+                       if (minDistSquared <= info.attackRadiusSquared) {
+                           fighting[field.get(ant).owner][crow][ccol] = Math.min(fighting[field.get(ant).owner][crow][ccol], antsFighting);
+                       }
+                   }
+               }
+           }
+        }
+
+        // now let's calculate SKD = Safe, Kill, Die
+        Status[][] status = new Status[info.rows][info.cols];
+        int[][] bestArr = new int[info.rows][info.cols];
+        for (Cell myAnt : field.getMyAntPositions()) {
+            for(Cell position : getNeighboursIncludingSelf(field, myAnt)) {
+                int enemy_count = totalInfluence[position.row][position.col] - playerInfluence[0][position.row][position.col];
+                int best = Integer.MAX_VALUE;
+                for(int p = 1; p<playerCount; p++) {
+                    best = Math.min(best, fighting[p][position.row][position.col]);
+                }
+                bestArr[position.row][position.col] = best;
+                if (best < enemy_count) {
+                    status[position.row][position.col] = Status.DIE;
+                }
+                else if (best == enemy_count && enemy_count > 0) {
+                    status[position.row][position.col] = Status.KILL;
+                }
+                else {
+                    status[position.row][position.col] = Status.SAFE;
+                }
+            }
+        }
+
+        // now make decisions where free ants can go
+        for (Cell antLoc : field.getMyAntPositions()) {
+            Direction direction = getDirectionHighestDiff(field, antLoc, diffExp, status);
+            if (direction != null) {
+                issueOrder(antLoc, direction);
+                log_err("Sent ant: " + antLoc + "  to " + direction);
+            }
+            else {
+                log_err("Ant stuck: " + antLoc);
             }
         }
 
@@ -145,20 +216,16 @@ public class CustomBot extends AbstractHiveMind {
         if (LOGGING_VIS_ENABLED && LOGGING_VIS_ANT_INFLUENCE)
             for(int row = 0; row < info.rows; row ++) {
                 for(int col = 0; col < info.cols; col ++) {
-                    if (diffMyFlag[row][col]) {
-                        String color = ANT_COLOR_MY;
-                        double influenceRange = maxAntInfluence;
-                        log_out("v setFillColor " + color + " " + diffMy[row][col]/ influenceRange);
-                        log_out("v tile " + row + " " + col);
-                        log_out("i " + row + " " + col + " my ant influence" + diffMy[row][col]);
-                        log_out("i " + row + " " + col + " enemy ant influence" + diffEnemy[row][col]);
-                    }
-                    if (diffEnemyFlag[row][col]) {
-                        //String color = ANT_COLOR_ENEMY;
-                        //double influenceRange = minAntInfluence;
-                        //log_out("v setFillColor " + color + " " + diffEnemy[row][col]/ influenceRange);
-                        //log_out("v tile " + row + " " + col);
-                        //log_out("i " + row + " " + col + " enemy ant influence" + diffEnemy[row][col]);
+                    if (playerInfluence[0][row][col] > 0) {
+                        log_out("i " + row + " " + col + " my influence: " + playerInfluence[0][row][col]);
+                        log_out("i " + row + " " + col + " total influence: " + totalInfluence[row][col]);
+                        if (status[row][col] != null) {
+                            log_out("i " + row + " " + col + " status: " + status[row][col].toString());
+                            log_out("i " + row + " " + col + " fighting: " + fighting[0][row][col]);
+                            int enemy_count = totalInfluence[row][col] - playerInfluence[0][row][col];
+                            log_out("i " + row + " " + col + " enemy_count: " + enemy_count);
+                            log_out("i " + row + " " + col + " best: " + bestArr[row][col]);
+                        }
                     }
                 }
             }
@@ -172,42 +239,21 @@ public class CustomBot extends AbstractHiveMind {
                     log_out("i " + row + " " + col + " " + diffExp[row][col]/ INFLUENCE_MAX);
                 }
             }
+    }
 
-        // now make decisions where free ants can go
-        for (Cell antLoc : field.getMyAntPositions()) {
-            Direction direction = getDirectionHighestDiff(field, antLoc, diffExp, diffMy, diffEnemy);
-            if (direction != null) {
-                issueOrder(antLoc, direction);
-                log_err("Sent ant: " + antLoc + "  to " + direction);
-            }
-            else {
-                log_err("Ant stuck: " + antLoc);
-            }
-        }
+    private Set<Cell> getNeighboursIncludingSelf(IField field, Cell cell) {
+        Set<Cell> r = getNeighbours(field, cell);
+        r.add(cell);
+        return r;
     }
 
     private Set<Cell> getNeighbours(IField field, Cell cell) {
         Set<Cell> r = new HashSet<Cell>();
-        Cell north = field.getDestination(cell, Direction.NORTH); Owned o = field.get(north.row, north.col); if (!o.type.equals(Cell.Type.WATER) && !o.type.equals(Cell.Type.HILL)) r.add(north);
-        Cell south = field.getDestination(cell, Direction.SOUTH); o = field.get(south.row, south.col); if (!o.type.equals(Cell.Type.WATER) && !o.type.equals(Cell.Type.HILL)) r.add(south);
-        Cell west = field.getDestination(cell, Direction.WEST); o = field.get(west.row, west.col); if (!o.type.equals(Cell.Type.WATER) && !o.type.equals(Cell.Type.HILL)) r.add(west);
-        Cell east = field.getDestination(cell, Direction.EAST); o = field.get(east.row, east.col); if (!o.type.equals(Cell.Type.WATER) && !o.type.equals(Cell.Type.HILL)) r.add(east);
+        Cell north = field.getDestination(cell, Direction.NORTH); Owned o = field.get(north.row, north.col); if (!o.type.equals(Cell.Type.WATER)) r.add(north);
+        Cell south = field.getDestination(cell, Direction.SOUTH); o = field.get(south.row, south.col); if (!o.type.equals(Cell.Type.WATER)) r.add(south);
+        Cell west = field.getDestination(cell, Direction.WEST); o = field.get(west.row, west.col); if (!o.type.equals(Cell.Type.WATER)) r.add(west);
+        Cell east = field.getDestination(cell, Direction.EAST); o = field.get(east.row, east.col); if (!o.type.equals(Cell.Type.WATER)) r.add(east);
         return r;
-    }
-    private void calcAntsInfluence(IField field, int influenceRadius, int influenceRadiusSquared, int[][] diffMyEnemy, boolean [][] diffMyEnemyFlag, Set<Cell> myAnts, int value) {
-        for (Cell myAnt : myAnts) {
-            for (int row = -influenceRadius; row<=influenceRadius; row++) {
-                for (int col = -influenceRadius; col<=influenceRadius; col++) {
-                    int crow = get_dest(myAnt.row, row, info.rows);
-                    int ccol = get_dest(myAnt.col, col, info.cols);
-                    int minDistSquared = getMinDist(field, getNeighbours(field, myAnt), Cell.of(crow, ccol));
-                    if (minDistSquared <= influenceRadiusSquared) {
-                        diffMyEnemy[crow][ccol] += value;
-                        diffMyEnemyFlag[crow][ccol] = true;
-                    }
-                }
-            }
-        }
     }
 
     private int getMinDist(IField field, Set<Cell> neighbours, Cell cell) {
@@ -230,16 +276,16 @@ public class CustomBot extends AbstractHiveMind {
         return (min_distance <= info.viewRadiusSquared);
     }
 
-    private Direction getDirectionHighestDiff(IField field, Cell cell, double[][] diffExp, int[][] diffMy, int[][] diffEnemy) {
+    private Direction getDirectionHighestDiff(IField field, Cell cell, double[][] diffExp, Status[][] status) {
         Cell north = field.getDestination(cell, Direction.NORTH);
         Cell south = field.getDestination(cell, Direction.SOUTH);
         Cell west = field.getDestination(cell, Direction.WEST);
         Cell east = field.getDestination(cell, Direction.EAST);
 
-        double diffNorth = field.get(north).type.isPassable()  && (diffMy[north.row][north.col] > -diffEnemy[north.row][north.col])  ? diffExp[north.row][north.col] : 0;
-        double diffSouth = field.get(south).type.isPassable()  && (diffMy[south.row][south.col] > -diffEnemy[south.row][south.col])  ? diffExp[south.row][south.col] : 0;
-        double diffWest = field.get(west).type.isPassable()  && (diffMy[west.row][west.col] > -diffEnemy[west.row][west.col])  ? diffExp[west.row][west.col] : 0;
-        double diffEast = field.get(east).type.isPassable()  && (diffMy[east.row][east.col] > -diffEnemy[east.row][east.col])  ? diffExp[east.row][east.col] : 0;
+        double diffNorth = field.get(north).type.isPassable()  && (status[north.row][north.col] == Status.SAFE)  ? diffExp[north.row][north.col] : 0;
+        double diffSouth = field.get(south).type.isPassable()  && (status[south.row][south.col] == Status.SAFE)  ? diffExp[south.row][south.col] : 0;
+        double diffWest = field.get(west).type.isPassable()  && (status[west.row][west.col] == Status.SAFE)  ? diffExp[west.row][west.col] : 0;
+        double diffEast = field.get(east).type.isPassable()  && (status[east.row][east.col] == Status.SAFE)  ? diffExp[east.row][east.col] : 0;
 
         double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
 

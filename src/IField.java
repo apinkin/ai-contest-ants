@@ -24,6 +24,8 @@ public interface IField  {
     Set<Cell> getUnexplored();
     Set<Cell> getMyHills();
 
+    Set<Cell> getAnts();
+
     int cols();
     int rows();
 

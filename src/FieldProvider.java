@@ -12,7 +12,7 @@ public class FieldProvider implements IFieldProvider {
     private boolean gameOver = false;
 
     private enum SetupToken {
-        LOADTIME, TURNTIME, ROWS, COLS, TURNS, VIEWRADIUS2, ATTACKRADIUS2, SPAWNRADIUS2, PLAYER_SEED;
+        LOADTIME, TURNTIME, ROWS, COLS, TURNS, VIEWRADIUS2, ATTACKRADIUS2, SPAWNRADIUS2, PLAYER_SEED, PLAYERS;
     }
 
     private enum UpdateToken {

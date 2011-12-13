@@ -241,6 +241,21 @@ public class Field implements IMutableField {
     }
 
     @Override
+    public Set<Cell> getAnts() {
+        Map<Integer, Set<Cell>> map = this.getMappingFor(Cell.Type.ANT);
+
+        Set<Cell> result = new LinkedHashSet<Cell>();
+
+        for(Entry<Integer, Set<Cell>> entry : map.entrySet()) {
+            if(entry.getKey() != Owned.OWNER_NOBODY) {
+                result.addAll(entry.getValue());
+            }
+        }
+
+        return result;
+    }
+
+    @Override
     //works slowly in the beginning, but speeds up as more cells are explored
     public void updateExplored() {
         Iterator<Cell> iterator = unexplored.iterator();
