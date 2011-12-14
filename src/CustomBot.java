@@ -32,6 +32,9 @@ public class CustomBot extends AbstractHiveMind {
     private static String ANT_COLOR_MY = "0 255 0";
 
     private static Map<Cell,Integer> lastSeen = new HashMap<Cell, Integer>();
+    private Set<Cell> myHills;
+    IField myField;
+    private int defenseRadiusSquared;
 
     @Override
     protected void doTurn(IField field) {
@@ -46,6 +49,10 @@ public class CustomBot extends AbstractHiveMind {
 
         //updateLastSeen(field);
 
+        myField = field;
+        myHills = field.getMyHills();
+        int defenseRadius = (int) Math.ceil(Math.sqrt(info.attackRadiusSquared));
+        defenseRadiusSquared = defenseRadius * defenseRadius;
         diffuse(field);
 
         //attack(field, myAnts, orderedAnts);
@@ -60,7 +67,6 @@ public class CustomBot extends AbstractHiveMind {
     private void diffuse(IField field) {
         double[][] diffExp = new double[info.rows][info.cols];
         boolean[][] diffusedExp = new boolean[info.rows][info.cols];
-        Set<Cell> myHills = field.getMyHills();
 
         // seed the main influence map
         for(int row = 0; row < info.rows; row ++) {
@@ -284,6 +290,10 @@ public class CustomBot extends AbstractHiveMind {
     }
 
     private boolean isCloseToMyHill(IField field, Set<Cell> myHills, Cell cell) {
+        return isCloseToMyHill(field, myHills, cell, info.viewRadiusSquared);
+    }
+
+    private boolean isCloseToMyHill(IField field, Set<Cell> myHills, Cell cell, int dist) {
         if (myHills.size() == 0)
             return false;
         int min_distance = Integer.MAX_VALUE;
@@ -292,7 +302,7 @@ public class CustomBot extends AbstractHiveMind {
             min_distance = Math.min(min_distance, distance);
         }
 
-        return (min_distance <= info.viewRadiusSquared);
+        return (min_distance <= dist);
     }
 
     private Direction getDirectionHighestDiff(IField field, Cell cell, double[][] diffExp, Status[][] status) {
@@ -301,10 +311,10 @@ public class CustomBot extends AbstractHiveMind {
         Cell west = field.getDestination(cell, Direction.WEST);
         Cell east = field.getDestination(cell, Direction.EAST);
 
-        double diffNorth = field.get(north).type.isPassable()  && (status[north.row][north.col] == Status.SAFE)  ? diffExp[north.row][north.col] : 0;
-        double diffSouth = field.get(south).type.isPassable()  && (status[south.row][south.col] == Status.SAFE)  ? diffExp[south.row][south.col] : 0;
-        double diffWest = field.get(west).type.isPassable()  && (status[west.row][west.col] == Status.SAFE)  ? diffExp[west.row][west.col] : 0;
-        double diffEast = field.get(east).type.isPassable()  && (status[east.row][east.col] == Status.SAFE)  ? diffExp[east.row][east.col] : 0;
+        double diffNorth = field.get(north).type.isPassable() && isSafe(north, status) ? diffExp[north.row][north.col] : 0;
+        double diffSouth = field.get(south).type.isPassable() && isSafe(south, status)  ? diffExp[south.row][south.col] : 0;
+        double diffWest = field.get(west).type.isPassable() && isSafe(west, status)  ? diffExp[west.row][west.col] : 0;
+        double diffEast = field.get(east).type.isPassable() && isSafe(east, status)  ? diffExp[east.row][east.col] : 0;
 
         double maxDiff = Math.max(Math.max(Math.max(diffNorth, diffSouth), diffWest), diffEast);
 
@@ -326,6 +336,10 @@ public class CustomBot extends AbstractHiveMind {
             return Direction.EAST;
         }
         return null;
+    }
+
+    private boolean isSafe(Cell cell, Status[][] status) {
+        return (status[cell.row][cell.col] == Status.SAFE) || (isCloseToMyHill(myField, myHills, cell, defenseRadiusSquared) && status[cell.row][cell.col] == Status.KILL);
     }
 
     private void print(int[][] diffExp) {
