@@ -136,19 +136,37 @@ public class CustomBot extends AbstractHiveMind {
         int playerCount = enemyPlayers+1;
 
         int[][][] playerInfluence = new int[playerCount][info.rows][info.cols];
+        boolean[][][] playerInfluenceEmitted = new boolean[playerCount][info.rows][info.cols];
         int[][] totalInfluence = new int[info.rows][info.cols];
         Set<Cell> ants = field.getAnts();
+
         for (Cell ant : ants) {
-            for (int row = -influenceRadius; row<=influenceRadius; row++) {
-                for (int col = -influenceRadius; col<=influenceRadius; col++) {
-                    int crow = get_dest(ant.row, row, info.rows);
-                    int ccol = get_dest(ant.col, col, info.cols);
-                    int minDistSquared = getMinDist(field, getNeighbours(field, ant), Cell.of(crow, ccol));
-                    if (minDistSquared <= info.attackRadiusSquared) {
-                        totalInfluence[crow][ccol] += 1;
-                        playerInfluence[field.get(ant).owner][crow][ccol] += 1;
+            int player = field.get(ant).owner;
+            Set<Cell> neighbours = getNeighboursIncludingSelf(field, ant);
+            Set<Cell> neighboursNew = new HashSet<Cell>();
+            for(Cell n : neighbours) {
+                if (!playerInfluenceEmitted[player][n.row][n.col]) {
+                    neighboursNew.add(n);
+                }
+                playerInfluenceEmitted[player][n.row][n.col] = true;
+            }
+            Set<Cell> influencedCells = new HashSet<Cell>();
+            for(Cell n : neighboursNew) {
+                for (int row = -influenceRadius; row<=influenceRadius; row++) {
+                    for (int col = -influenceRadius; col<=influenceRadius; col++) {
+                        int crow = get_dest(n.row, row, info.rows);
+                        int ccol = get_dest(n.col, col, info.cols);
+                        Cell ccell = Cell.of(crow, ccol);
+                        int distSquared = field.getDistance(n, ccell);
+                        if (distSquared <= info.attackRadiusSquared) {
+                            influencedCells.add(ccell);
+                        }
                     }
                 }
+            }
+            for(Cell c : influencedCells) {
+                totalInfluence[c.row][c.col] += 1;
+                playerInfluence[player][c.row][c.col] += 1;
             }
         }
 
