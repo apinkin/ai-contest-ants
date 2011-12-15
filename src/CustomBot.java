@@ -15,7 +15,7 @@ public class CustomBot extends AbstractHiveMind {
 
     private static boolean LOGGING_ENABLED = false;
 
-    private static boolean LOGGING_VIS_ENABLED = false;
+    private static boolean LOGGING_VIS_ENABLED = true;
     private static boolean LOGGING_VIS_MAIN_INFLUENCE = false;
     private static boolean LOGGING_VIS_ANT_INFLUENCE = false;
 
@@ -23,7 +23,7 @@ public class CustomBot extends AbstractHiveMind {
     private static int INFLUENCE_FOOD = INFLUENCE_MAX;
     private static int INFLUENCE_ENEMY_HILL = INFLUENCE_MAX;
     private static int INFLUENCE_UNEXPLORED = INFLUENCE_MAX / 10;
-    private static int INFLUENCE_UNSEEN = INFLUENCE_MAX / 20;
+    private static int INFLUENCE_UNSEEN = INFLUENCE_MAX / 100;
     private static int INFLUENCE_MY_HILL_DEFEND = INFLUENCE_MAX;
     private static int INFLUENCE_MY_ANT = 0;
     private static double DIFF = 1e-100;
@@ -98,10 +98,10 @@ public class CustomBot extends AbstractHiveMind {
                     diffExp[row][col] = INFLUENCE_UNEXPLORED;
                     diffusedExp[row][col] = true;
                 }
-//                else if (o.explored && !field.isSeen(cell)) {
-//                    diffExp[row][col] = INFLUENCE_UNSEEN;
-//                    diffusedExp[row][col] = true;
-//                }
+                else if (o.explored && !field.isSeen(cell)) {
+                    diffExp[row][col] = INFLUENCE_UNSEEN;
+                    diffusedExp[row][col] = true;
+                }
                 else {
                     // lastSeen or unexplored
                     //Integer seenTurn = lastSeen.get(cell);
