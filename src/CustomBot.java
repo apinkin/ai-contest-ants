@@ -5,6 +5,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 public class CustomBot extends AbstractHiveMind {
@@ -86,10 +87,10 @@ public class CustomBot extends AbstractHiveMind {
                     diffExp[row][col] = INFLUENCE_MY_HILL_DEFEND;
                     diffusedExp[row][col] = true;
                 }
-                else if (o.type.equals(Cell.Type.ANT) && o.isMine()) {
-                    diffExp[row][col] = INFLUENCE_MY_ANT;
-                    diffusedExp[row][col] = true;
-                }
+//                else if (o.type.equals(Cell.Type.ANT) && o.isMine()) {
+//                    diffExp[row][col] = INFLUENCE_MY_ANT;
+//                    diffusedExp[row][col] = true;
+//                }
                 else if (o.type.equals(Cell.Type.WATER) || (o.type.equals(Cell.Type.HILL) && o.isMine())) {
                     diffExp[row][col] = 0;
                     diffusedExp[row][col] = true;
@@ -223,6 +224,36 @@ public class CustomBot extends AbstractHiveMind {
                     status[position.row][position.col] = Status.SAFE;
                 }
             }
+        }
+
+        // let's do topological sort
+        Set<Cell> myAnts = field.getMyAntPositions();
+        TreeMap<Cell, ArrayList<Cell>> mp = new TreeMap<Cell, ArrayList<Cell>>();
+        for (Cell antLoc : myAnts) {
+            Direction direction = getDirectionHighestDiff(field, antLoc, diffExp, status);
+            if (direction == null)
+                continue;
+            Cell dest = field.getDestination(antLoc, direction);
+            if (myAnts.contains(dest)) {
+                System.err.println("----Adding to DAG");
+                if (mp.containsKey(antLoc)) {
+                    mp.get(antLoc).add(dest);
+                }
+                else {
+                    ArrayList<Cell> deps = new ArrayList<Cell>();
+                    deps.add(dest);
+                    mp.put(antLoc, deps);
+                }
+            }
+        }
+        Utils.tSortFix(mp);
+        try {
+            ArrayList<Cell> topo = Utils.tSort(mp);
+            if (topo.size() > 0)
+                System.err.println(topo);
+        } catch (Exception e) {
+            // cyclic?
+            System.err.println("----Bad DAG!");
         }
 
         // now make decisions where free ants can go
