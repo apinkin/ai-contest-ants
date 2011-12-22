@@ -1,0 +1,8 @@
+This is my entry to Google AI Challenge 2011 (Ants).
+
+The bot is using influence fields for combat. Credit to Memetix for sharing his combat idea which made an improvement to my bot's combat.
+
+Potential field diffusion is used for food gethering, exploration, and hill attack. Also, the same approach is used to maintain visibility of the whole explored space.
+
+Thanks contest organizers and all participants for the great competition!
+
